@@ -19,4 +19,4 @@ class Settings(BaseSettings):
         self.UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 
 
-settings = Settings()
+settings = Settings() # type: ignore
