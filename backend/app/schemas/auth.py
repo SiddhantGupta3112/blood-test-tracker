@@ -55,7 +55,7 @@ class Login(BaseModel):
     password: Annotated[str, AfterValidator(passwrd_validator)]
     
 class Token_response(BaseModel):
-    token: str
+    access_token: str
     token_type: str = "bearer"
     
 class UserResponse(BaseModel):

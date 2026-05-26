@@ -3,6 +3,7 @@ from app.schemas import Register
 from app.core import hash_password
 from sqlalchemy.orm import Session
 
+
 def fetch_user_by_email(db: Session, email: str) -> User | None:
     """Fetch a user by a provided email
 
@@ -58,3 +59,5 @@ def create_new_user(db: Session, user_data: Register) -> User:
     db.refresh(db_user)
     
     return db_user
+    
+    

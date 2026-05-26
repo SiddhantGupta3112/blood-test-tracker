@@ -1,1 +1,1 @@
-from user import fetch_user_by_user_id, fetch_user_by_email, create_new_user
+from .user import fetch_user_by_user_id, fetch_user_by_email, create_new_user
