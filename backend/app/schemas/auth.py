@@ -46,7 +46,7 @@ class Register(BaseModel):
     email: Annotated[str, AfterValidator(email_validator)]
     password: Annotated[str, AfterValidator(passwrd_validator)]
     full_name: str
-    phone_ctr_code : Optional[str]
+    phone_country_code : Optional[str]
     phone_number: Optional[str]
     date_of_birth: Optional[date]
     
