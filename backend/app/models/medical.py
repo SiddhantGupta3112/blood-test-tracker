@@ -44,8 +44,8 @@ class Report(Base):
     file_path: Mapped[Optional[str]] = mapped_column(String(500))
     status: Mapped[str] = mapped_column(
         String(20),
-        CheckConstraint("status IN ('pending', 'verified', 'rejected')"),
-        default="pending",
+        CheckConstraint("status IN ('unverified', 'pending', 'verified')"),
+        default="unverified",
         nullable=False
     )
 
@@ -78,8 +78,8 @@ class TestResult(Base):
         ForeignKey("test_metadata.test_id"), nullable=True
     )
 
-    raw_name: Mapped[str] = mapped_column(String(150), nullable=False)
-    value: Mapped[Optional[float]] = mapped_column(Float)
+    test_name: Mapped[str] = mapped_column(String(150), nullable=False)
+    value: Mapped[float] = mapped_column(Float)
     text_value: Mapped[Optional[str]] = mapped_column(String(50))
     unit: Mapped[Optional[str]] = mapped_column(String(20))
     lower_bound: Mapped[Optional[float]] = mapped_column(Float)
