@@ -1,5 +1,5 @@
 from app.models import Report
-from app.schemas import Report as ReportSchema, ReportMetadata
+from app.schemas import Report as ReportMetadata
 from sqlalchemy.orm import Session
 from typing import List
 
