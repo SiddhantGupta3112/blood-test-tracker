@@ -13,8 +13,14 @@ class ReportRow(BaseModel):
     unit: Optional[str]
     lower_bound: Optional[float]
     upper_bound: Optional[float]
-    is_abnormal: Optional[bool]
     
+class TestResultResponse(BaseModel):
+    test_name: str
+    value: float
+    unit: Optional[str]
+    lower_bound: Optional[float]
+    upper_bound: Optional[float]
+    is_abnormal: Optional[bool] = None    
     
 class ReportMetadata(BaseModel):
     collection_date: Annotated[date, AfterValidator(check_date)]
@@ -39,5 +45,16 @@ class ReportSummary(BaseModel):
     age: Optional[int]
     lab_name: Optional[str]
     number_of_test: int
+    
+class StandaloneTestRequest(BaseModel):
+    file_name: str
+    test_name: str
+    collection_date: Annotated[date, AfterValidator(check_date)]
+    lab_name: Optional[str]
+    value: float
+    unit: Optional[str]
+    lower_bound: Optional[float]
+    upper_bound: Optional[float]
+    
     
     

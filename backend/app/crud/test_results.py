@@ -1,4 +1,4 @@
-from app.models import Report, TestResult
+from app.models import Report, TestResult, TestMetadata
 from app.schemas import ReportRow
 from sqlalchemy.orm import Session
 from typing import List
@@ -20,7 +20,23 @@ def add_test_data(db: Session, data: List[ReportRow], report_id: int):
     
     for ele in data:
         row_dict = ele.model_dump()
+        test_name_clean = row_dict["test_name"].strip()
         
+        meta_item = db.query(TestMetadata).filter(
+            TestMetadata.canonical_name == test_name_clean
+        ).first()
+        
+  
+        if not meta_item:
+            meta_item = TestMetadata(
+                canonical_name=test_name_clean,
+                default_unit=row_dict.get("unit"),  
+                category=None,
+                description=None
+            )
+            db.add(meta_item)
+            db.flush() 
+            
         row_dict["is_abnormal"] = is_abnormal(
             row_dict["value"], 
             row_dict["lower_bound"],
@@ -28,12 +44,14 @@ def add_test_data(db: Session, data: List[ReportRow], report_id: int):
         )
         
         row_dict["report_id"] = report_id
+        row_dict["test_id"] = meta_item.test_id
+        row_dict["text_value"] = str(row_dict["value"])
         
         db_item = TestResult(**row_dict)
         db_tests.append(db_item)
         
     db.add_all(db_tests)
-    db.commit()
+    db.flush()
     
 def delete_results_for_report(db: Session, report_id: int, user_id: int) -> bool:
     check_report_id = db.query(Report.report_id).filter(Report.report_id == report_id, Report.user_id == user_id).first()

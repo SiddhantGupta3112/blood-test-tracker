@@ -40,7 +40,7 @@ class Report(Base):
         DateTime, server_default=func.now(), nullable=False
     )
     lab_name: Mapped[Optional[str]] = mapped_column(String(100))
-    file_name: Mapped[Optional[str]] = mapped_column(String(255))
+    file_name: Mapped[str] = mapped_column(String(255), nullable=False)
     file_path: Mapped[Optional[str]] = mapped_column(String(500))
     status: Mapped[str] = mapped_column(
         String(20),
@@ -79,7 +79,7 @@ class TestResult(Base):
     )
 
     test_name: Mapped[str] = mapped_column(String(150), nullable=False)
-    value: Mapped[float] = mapped_column(Float)
+    value: Mapped[float] = mapped_column(Float, nullable=False)
     text_value: Mapped[Optional[str]] = mapped_column(String(50))
     unit: Mapped[Optional[str]] = mapped_column(String(20))
     lower_bound: Mapped[Optional[float]] = mapped_column(Float)

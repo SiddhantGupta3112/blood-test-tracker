@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.api.auth_routes import router as auth_router
-
+from app.api.pdf_routes import router as pdf_router
 
 app = FastAPI()
 
@@ -23,7 +23,7 @@ app.add_middleware(
 
 # Include your routers
 app.include_router(auth_router)
-
+app.include_router(pdf_router)
 
 @app.get("/")
 def root():
