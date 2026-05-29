@@ -14,18 +14,30 @@ class ReportRow(BaseModel):
     lower_bound: Optional[float]
     upper_bound: Optional[float]
     
+    model_config = {"from_attributes": True}
+    
 class TestResultResponse(BaseModel):
-    test_name: str
     value: float
     unit: Optional[str]
     lower_bound: Optional[float]
     upper_bound: Optional[float]
-    is_abnormal: Optional[bool] = None    
+    is_abnormal: Optional[bool] = None
+    collection_date: date
+    age: Optional[int]
+    lab_name: Optional[str]
+    
+    model_config = {"from_attributes": True}
+    
+class BiomarkerHistory(BaseModel):
+    test_name: str
+    results: list[TestResultResponse]
     
 class ReportMetadata(BaseModel):
     collection_date: Annotated[date, AfterValidator(check_date)]
     lab_name: Optional[str]
     file_name: Optional[str]
+    
+    model_config = {"from_attributes": True}
     
 class ReportPayload(BaseModel):
     report_id: int

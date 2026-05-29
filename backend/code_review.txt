@@ -1,0 +1,1264 @@
+]633;E;for f in app/main.py app/core/config.py app/core/security.py app/db/session.py app/models/medical.py app/models/base.py app/schemas/report.py app/schemas/auth.py app/api/deps.py app/api/auth_routes.py app/api/pdf_routes.py app/api/plots_routes.py app/crud/user.py app/crud/report.py app/crud/test_results.py app/services/parse_pdf.py app/services/get_metadata.py app/services/database_service.py app/utils/validation.py app/db/seed_data.py docker-compose.yml requirements.txt;23dca3c4-e9de-4541-8783-82b0e0abfa5f]633;C===== app/main.py =====
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+from app.api.auth_routes import router as auth_router
+from app.api.pdf_routes import router as pdf_router
+from app.api.plots_routes import router as plot_router
+
+app = FastAPI()
+
+
+origins = [
+    "http://localhost:5173",  
+    "http://localhost:3000",  
+    "http://127.0.0.1:5173",
+]
+
+# 2. Add the Middleware to the app
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=origins,            # Allows specific origins
+    allow_credentials=True,
+    allow_methods=["*"],              # Allows all methods (GET, POST, etc.)
+    allow_headers=["*"],              # Allows all headers
+)
+
+# Include your routers
+app.include_router(auth_router)
+app.include_router(pdf_router)
+app.include_router(plot_router)
+
+@app.get("/")
+def root():
+    return {"status": "Backend is running with CORS enabled"}
+===== app/core/config.py =====
+from pathlib import Path
+from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+class Settings(BaseSettings):
+    DATABASE_URL: str
+    JWT_SECRET: str
+    JWT_ALGORITHM: str = "HS256"
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = 1440
+    UPLOAD_DIR: Path = Path("uploads")
+    ALLOWED_EXTENSIONS: frozenset[str] = frozenset({".pdf"})
+
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+    )
+
+    def model_post_init(self, __context):
+        self.UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+
+
+settings = Settings() # type: ignore
+===== app/core/security.py =====
+import bcrypt
+from jose import jwt, JWTError
+from datetime import datetime, timedelta, timezone
+from .config import settings
+
+def hash_password(plain_text: str) -> str:
+    """Hashes a plaintext pasword using the bcrypt algorithm
+    
+    Args:
+        plain_text(str): unhashed password provided by the user.
+        
+    Returns:
+        str: the final haashed and encoded bcrypt hash string.
+        
+    Raises:
+        TypeError: If plain_text is not a string.
+    """
+    
+    password_bytes = plain_text.encode('utf-8')
+    salt = bcrypt.gensalt()
+    
+    return bcrypt.hashpw(password_bytes, salt).decode('utf-8')
+    
+    
+def verify_password(plain_text: str, password_hash: str) -> bool:
+    """Compare a plaintext password against a stored bcrypt hash
+
+    Args:
+        plain_text (str): The plaintext password provided by the user
+        password_hash (str): The encoded bcrytpt hash stored in the db
+
+    Returns:
+        bool: True if passwords match, False otherwise
+    """
+    password_bytes = plain_text.encode('utf-8')
+    hash_bytes = password_hash.encode('utf-8')
+    
+    return bcrypt.checkpw(password_bytes, hash_bytes)
+
+def create_access_token(user_id: int) -> str:
+    """Create and sign a JSON Web Token
+
+    Args:
+        user_id (int): The stored id of the user for whom the token is generated
+
+    Returns:
+        str: The signed, encoded JWT string
+    """
+    iat = datetime.now(timezone.utc)
+    exp = iat + timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
+    
+    claims = {
+        "iss" : "blood-test-tracker-api",
+        "sub" : str(user_id),
+        "exp" : int(exp.timestamp()),
+        "iat" : int(iat.timestamp()),
+    }
+    
+    token = jwt.encode(claims, settings.JWT_SECRET, algorithm=settings.JWT_ALGORITHM)
+    
+    return token
+
+
+def decode_jwt_token(token: str) -> int | None:
+    """Decode and validate a JWT token to retrieve the user ID.
+
+    Args:
+        token (str): The raw, encoded JWT token received from the client.
+
+    Returns:
+        int | None: The integer user ID if the token is fully valid; 
+            None if the token is expired, tampered with, or malformed.
+    """
+    try:
+        claims = jwt.decode(token, settings.JWT_SECRET, algorithms=[settings.JWT_ALGORITHM])
+        return int(claims['sub'])
+    
+    except (JWTError, KeyError, ValueError):
+        return None
+        
+    
+    
+    
+===== app/db/session.py =====
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
+from app.core.config import settings
+
+engine = create_engine(
+    str(settings.DATABASE_URL),
+    pool_size=5,
+    max_overflow=10,
+    pool_pre_ping=True,
+)
+
+SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+===== app/models/medical.py =====
+from datetime import date, datetime
+from typing import List, Optional
+from sqlalchemy import (
+    ForeignKey, String, Float, DateTime, Date, func,
+    CheckConstraint, Boolean, Text
+)
+from sqlalchemy.orm import Mapped, mapped_column, relationship
+from .base import Base
+
+
+class User(Base):
+    __tablename__ = "users"
+
+    user_id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    full_name: Mapped[str] = mapped_column(String(150), nullable=False)
+    email: Mapped[str] = mapped_column(String(255), unique=True, nullable=False)
+    phone_country_code: Mapped[Optional[str]] = mapped_column(String(5))
+    phone_number: Mapped[Optional[str]] = mapped_column(String(15))
+    password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
+    date_of_birth: Mapped[Optional[date]] = mapped_column(Date)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime, server_default=func.now(), nullable=False
+    )
+
+    reports: Mapped[List["Report"]] = relationship(
+        back_populates="user", cascade="all, delete-orphan"
+    )
+
+
+class Report(Base):
+    __tablename__ = "reports"
+
+    report_id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    user_id: Mapped[int] = mapped_column(
+        ForeignKey("users.user_id", ondelete="CASCADE"), nullable=False
+    )
+    collection_date: Mapped[date] = mapped_column(Date, nullable=False)
+    upload_date: Mapped[datetime] = mapped_column(
+        DateTime, server_default=func.now(), nullable=False
+    )
+    lab_name: Mapped[Optional[str]] = mapped_column(String(100))
+    file_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    file_path: Mapped[Optional[str]] = mapped_column(String(500))
+    status: Mapped[str] = mapped_column(
+        String(20),
+        CheckConstraint("status IN ('unverified', 'pending', 'verified')"),
+        default="unverified",
+        nullable=False
+    )
+
+    user: Mapped["User"] = relationship(back_populates="reports")
+    results: Mapped[List["TestResult"]] = relationship(
+        back_populates="report", cascade="all, delete-orphan"
+    )
+
+
+class TestMetadata(Base):
+    __tablename__ = "test_metadata"
+
+    test_id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    canonical_name: Mapped[str] = mapped_column(String(150), unique=True, nullable=False)
+    category: Mapped[Optional[str]] = mapped_column(String(50))
+    default_unit: Mapped[Optional[str]] = mapped_column(String(20))
+    description: Mapped[Optional[str]] = mapped_column(Text)
+
+    results: Mapped[List["TestResult"]] = relationship(back_populates="test_meta")
+
+
+class TestResult(Base):
+    __tablename__ = "test_results"
+
+    result_id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    report_id: Mapped[int] = mapped_column(
+        ForeignKey("reports.report_id", ondelete="CASCADE"), nullable=False
+    )
+    test_id: Mapped[Optional[int]] = mapped_column(
+        ForeignKey("test_metadata.test_id"), nullable=True
+    )
+
+    test_name: Mapped[str] = mapped_column(String(150), nullable=False)
+    value: Mapped[float] = mapped_column(Float, nullable=False)
+    text_value: Mapped[Optional[str]] = mapped_column(String(50))
+    unit: Mapped[Optional[str]] = mapped_column(String(20))
+    lower_bound: Mapped[Optional[float]] = mapped_column(Float)
+    upper_bound: Mapped[Optional[float]] = mapped_column(Float)
+    is_abnormal: Mapped[Optional[bool]] = mapped_column(Boolean)
+
+    report: Mapped["Report"] = relationship(back_populates="results")
+    test_meta: Mapped[Optional["TestMetadata"]] = relationship(back_populates="results")
+===== app/models/base.py =====
+from sqlalchemy.orm import DeclarativeBase
+
+
+class Base(DeclarativeBase):
+    pass
+===== app/schemas/report.py =====
+from pydantic import AfterValidator, BaseModel
+from typing import Optional, Annotated, List
+from datetime import date, datetime, timezone
+
+def check_date(value: date) -> date:
+    if value > date.today():
+        raise ValueError("Date in the future")
+    return value
+
+class ReportRow(BaseModel):
+    test_name: str
+    value: float
+    unit: Optional[str]
+    lower_bound: Optional[float]
+    upper_bound: Optional[float]
+    
+    model_config = {"from_attributes": True}
+    
+class TestResultResponse(BaseModel):
+    value: float
+    unit: Optional[str]
+    lower_bound: Optional[float]
+    upper_bound: Optional[float]
+    is_abnormal: Optional[bool] = None
+    collection_date: date
+    age: Optional[int]
+    lab_name: Optional[str]
+    
+    model_config = {"from_attributes": True}
+    
+class BiomarkerHistory(BaseModel):
+    test_name: str
+    results: list[TestResultResponse]
+    
+class ReportMetadata(BaseModel):
+    collection_date: Annotated[date, AfterValidator(check_date)]
+    lab_name: Optional[str]
+    file_name: Optional[str]
+    
+    model_config = {"from_attributes": True}
+    
+class ReportPayload(BaseModel):
+    report_id: int
+    report_metadata: ReportMetadata
+    report_data: List[ReportRow]
+
+class Report(ReportPayload):
+    pass
+
+class Validation(ReportPayload):
+    pass
+    
+class ReportSummary(BaseModel):
+    report_id: int
+    file_name: str # will be test_name for standalone tests
+    collection_date: date
+    age: Optional[int]
+    lab_name: Optional[str]
+    number_of_test: int
+    
+class StandaloneTestRequest(BaseModel):
+    file_name: str
+    test_name: str
+    collection_date: Annotated[date, AfterValidator(check_date)]
+    lab_name: Optional[str]
+    value: float
+    unit: Optional[str]
+    lower_bound: Optional[float]
+    upper_bound: Optional[float]
+    
+    
+    
+===== app/schemas/auth.py =====
+from pydantic import AfterValidator, BaseModel
+from typing import Optional, Annotated
+import re
+from datetime import date
+
+
+def email_validator(email : str) -> str:
+    """Validate a given email
+    
+    For Email to be valid must match the regex expression
+    
+    Args:
+        email (str): The email provided to the function
+
+    Returns:
+        bool: True is email is valid, False otherwise
+    """
+    
+    REGEX = r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,7}"
+    
+    if not re.fullmatch(REGEX,email):
+        raise ValueError("Invalid Email")
+    return email
+
+
+def passwrd_validator(password: str) -> str:
+    """Check if input password is valid or not
+
+    Args:
+        password (str): The input password
+
+    Returns:
+        bool: True if password valid, false otherwise
+    """
+    
+    PASSWORD_REGEX = re.compile(
+        r"""^(?=.*[A-Z])(?=.*\d)(?=.*[@_!#$%^&*()\-+={}\[\]|\\:;"'<>,.?/~`]).{8,}$"""
+    )
+    
+    if not re.fullmatch(PASSWORD_REGEX, password):
+        raise ValueError("Invalid Password")
+
+    return password
+
+class Register(BaseModel):
+    email: Annotated[str, AfterValidator(email_validator)]
+    password: Annotated[str, AfterValidator(passwrd_validator)]
+    full_name: str
+    phone_country_code : Optional[str]
+    phone_number: Optional[str]
+    date_of_birth: Optional[date]
+    
+class Login(BaseModel):
+    email: Annotated[str, AfterValidator(email_validator)]
+    password: Annotated[str, AfterValidator(passwrd_validator)]
+    
+class Token_response(BaseModel):
+    access_token: str
+    token_type: str = "bearer"
+    
+class UserResponse(BaseModel):
+    user_id: int
+    full_name: str
+    email: str
+    date_of_birth: Optional[date] = None
+
+    model_config = {"from_attributes": True}
+
+
+===== app/api/deps.py =====
+from app.db import SessionLocal
+from fastapi import Depends, HTTPException, status
+from fastapi.security import OAuth2PasswordBearer
+from app.core import decode_jwt_token 
+from sqlalchemy.orm import Session
+from app.models import User
+from app.crud import fetch_user_by_user_id
+
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login")
+
+def get_db():
+    """Provide a transactional database context dependency.
+
+    Yields:
+        Session: An active SQLAlchemy database session.
+    """
+    
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
+            
+            
+def get_current_user(
+    token: str = Depends(oauth2_scheme), 
+    db: Session = Depends(get_db)
+) -> User:
+    user_id = decode_jwt_token(token)
+    
+    if not user_id:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Could not validate credentials.",
+            headers={"WWW-Authenticate": "Bearer"}
+        )
+    
+    user = fetch_user_by_user_id(db, user_id)
+    
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Could not validate credentials.",
+            headers={"WWW-Authenticate": "Bearer"}
+        )
+        
+    return user
+===== app/api/auth_routes.py =====
+from fastapi import APIRouter, HTTPException, status, Depends
+from app.schemas import Login, Token_response, Register, UserResponse
+from sqlalchemy.orm import Session
+from app.api.deps import get_db, get_current_user
+from app.models import User
+from app.crud import fetch_user_by_email, create_new_user
+from app.core import verify_password, create_access_token
+from sqlalchemy.exc import IntegrityError
+
+router = APIRouter(prefix="/auth", tags=["auth"])
+
+@router.post("/login", response_model=Token_response)
+def login(user_data: Login, db: Session = Depends(get_db)):
+    user = fetch_user_by_email(db, user_data.email)
+    
+    if not user or not verify_password(user_data.password, user.password_hash):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Could not validate credentials.",
+            headers={"WWW-Authenticate": "Bearer"}
+        )
+          
+    return Token_response(
+        access_token=create_access_token(user.user_id)
+    )
+
+@router.post("/register" , response_model=UserResponse, status_code=status.HTTP_201_CREATED)
+def register(user_data: Register, db: Session = Depends(get_db)):
+    
+    try:
+        user = create_new_user(db, user_data)
+        return user
+        
+    except IntegrityError as e:
+        db.rollback()
+        
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="An account with this email already exists."
+        )
+    
+@router.get("/me", response_model=UserResponse, status_code=status.HTTP_200_OK)
+def me(current_user: User = Depends(get_current_user)):
+        return current_user
+    
+===== app/api/pdf_routes.py =====
+from fastapi import (APIRouter, HTTPException, 
+                     status, Depends, File, 
+                     UploadFile)
+import shutil
+from app.models import User, TestResult
+from app.api.deps import get_db, get_current_user
+from sqlalchemy.orm import Session
+from app.core.config import settings
+import uuid
+from app.schemas import Report as ReportSchema, Validation, ReportSummary, ReportRow, StandaloneTestRequest
+from app.services.database_service import save_report
+from app.services.parse_pdf import get_report_data
+from app.services.get_metadata import get_metadata
+from app.crud.report import fetch_report, fetch_all_reports, delete_report, create_standalone_test
+from app.crud.test_results import add_test_data, delete_results_for_report
+from pathlib import Path
+
+router = APIRouter(prefix="/pdf", tags=["pdf"])
+
+@router.post("/upload", response_model=ReportSchema, status_code=status.HTTP_201_CREATED)
+def upload_pdf(
+    file: UploadFile = File(...), 
+    user: User = Depends(get_current_user), 
+    db: Session = Depends(get_db)
+):
+    if not file.filename:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Uploaded file is missing a valid filename."
+        )
+        
+    if file.content_type != "application/pdf":
+        raise HTTPException(
+            status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
+            detail="File not PDF"
+        )
+    unique_name = f"{uuid.uuid4()}_{file.filename}"
+    file_path = settings.UPLOAD_DIR / unique_name
+         
+    with open(file_path, "wb") as buffer:
+        shutil.copyfileobj(file.file, buffer)
+        
+    try:
+        data = get_report_data(file_path)
+        report_metadata = get_metadata(file_path, file.filename)
+        report = save_report(db, data, report_metadata, user.user_id, str(file_path))
+        return ReportSchema(
+            report_id=report.report_id,
+            report_metadata=report_metadata,
+            report_data=[ReportRow(**row) for row in data]
+        )
+    except Exception as e:
+        print(f"UPLOAD ERROR: {type(e).__name__}: {e}")
+        if file_path.exists():
+            file_path.unlink()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Error Processing pdf"
+        )
+        
+@router.post("/validate/{report_id}", status_code=status.HTTP_200_OK)
+def validate_report(report_id: int, 
+                    response: Validation, 
+                    db: Session = Depends(get_db), 
+                    user: User = Depends(get_current_user)
+):
+    
+    report = fetch_report(db, user.user_id, report_id)
+    if not report:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Report not found"
+        )
+        
+     
+    try:
+        report_data = response.report_metadata.model_dump(exclude_unset=True)
+        for key, value in report_data.items():
+            setattr(report, key, value)
+        
+        report.status = "verified"
+        
+        delete_results_for_report(db, report.report_id, user.user_id)
+        add_test_data(db, response.report_data, report.report_id)
+        
+        db.commit()
+        db.refresh(report)
+        
+        return {"message": f"Report {report_id} verified successfully"}
+
+    except Exception:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Report {report_id} verification failed"
+    )
+        
+@router.post("/standalone", status_code=status.HTTP_201_CREATED)
+def standalone_test(data: StandaloneTestRequest, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    try:
+        report = create_standalone_test(db, user.user_id, data)
+        db.commit()
+        db.refresh(report)
+        
+        return {"message": f"Report {report.report_id} verified successfully"}
+    
+    except Exception:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Test verificaion failed"
+    )
+        
+@router.get("/reports", response_model=list[ReportSummary], status_code=status.HTTP_200_OK)
+def get_all_reports(user: User = Depends(get_current_user), 
+    db: Session = Depends(get_db)
+):
+    reports = fetch_all_reports(db, user.user_id)
+    
+    summary = []
+    for report, number_of_test in reports:
+        report_summary = ReportSummary(
+            report_id=report.report_id,
+            collection_date=report.collection_date,
+            age = (report.collection_date - user.date_of_birth).days // 365 if user.date_of_birth else None,
+            number_of_test=number_of_test,
+            file_name=report.file_name,
+            lab_name=report.lab_name
+        )
+        
+        summary.append(report_summary)
+        
+        
+    return summary
+
+
+@router.delete("/reports/{report_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete(report_id: int, 
+           user : User = Depends(get_current_user), 
+           db: Session = Depends(get_db)
+):
+    report = fetch_report(db, user.user_id, report_id)
+    if not report:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Report not found"
+        )
+        
+    file_path = report.file_path
+    
+    delete_report(db, user.user_id, report_id)
+    db.commit()
+    if file_path and Path(file_path).exists():
+        Path(file_path).unlink()
+                
+===== app/api/plots_routes.py =====
+from fastapi import (APIRouter, HTTPException, 
+                     status, Depends )
+from app.models import User
+from app.api.deps import get_db, get_current_user
+from sqlalchemy.orm import Session
+from app.schemas import Report, ReportMetadata, ReportRow, TestResultResponse, BiomarkerHistory
+from app.crud.report import fetch_report
+from app.crud.test_results import  get_test_names, get_biomarker_history, fetch_results_for_report
+
+
+router = APIRouter(prefix="/plots", tags=["plots"])
+
+@router.get("/tests", response_model=list[str], status_code=status.HTTP_200_OK)
+def get_unique_tests(db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    test_names = get_test_names(db, user.user_id)
+    
+    if not test_names:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="No tests found"
+        )
+        
+    return test_names
+
+@router.get("/history/{test_name}", response_model=BiomarkerHistory, status_code=status.HTTP_200_OK)
+def get_test_history(test_name: str, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    tests = get_biomarker_history(db, user.user_id, test_name)
+    
+    if not tests:
+        raise  HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="No data found"
+        )
+        
+    test_values = []
+    
+    for test in tests:
+        result = TestResultResponse(
+            value=test.value,
+            unit=test.unit,
+            lower_bound=test.lower_bound,
+            upper_bound=test.upper_bound,
+            is_abnormal=test.is_abnormal,
+            collection_date=test.report.collection_date,
+            lab_name=test.report.lab_name,
+            age=(test.report.collection_date - user.date_of_birth).days // 365 if user.date_of_birth else None
+        )
+        test_values.append(result)
+        
+        
+    result = BiomarkerHistory(
+        test_name=test_name,
+        results=test_values
+    )
+    
+    return result
+
+@router.get("/report/{report_id}", response_model=Report, status_code=status.HTTP_200_OK)
+def get_results_for_report(report_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    data = fetch_results_for_report(db, report_id, user.user_id)
+    if not data:
+        raise  HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Report not found"
+        )
+        
+    metadata = fetch_report(db, user.user_id, report_id)
+    if not metadata:
+        raise  HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Report not found"
+        )
+    
+    result = Report(
+        report_id=report_id,
+        report_metadata=ReportMetadata.model_validate(metadata),
+        report_data=[ReportRow.model_validate(row) for row in data]
+    )
+    
+    return result
+===== app/crud/user.py =====
+from app.models import User
+from app.schemas import Register
+from app.core import hash_password
+from sqlalchemy.orm import Session
+
+
+def fetch_user_by_email(db: Session, email: str) -> User | None:
+    """Fetch a user by a provided email
+
+    Args:
+        email (str): The email used to search the user
+
+    Returns:
+        User | None: User object if user with given email exists, None otherwise
+    """
+    
+    
+    user = db.query(User).filter(User.email == email).first()
+        
+    return user
+    
+    
+def fetch_user_by_user_id(db: Session, user_id: int) -> User | None:
+    """Fetch a user by user_id
+
+    Args:
+        user_id (int): The given user_id to search for user
+
+    Returns:
+        User | None: User object if user with given user_id exists, None otherwise
+    """
+    
+    
+    user = db.query(User).filter(User.user_id == user_id).first()
+    
+        
+    return user
+    
+    
+def create_new_user(db: Session, user_data: Register) -> User:
+    """Create a new user
+
+    Args:
+        user_data (Register): Pydantic model object used for validation
+
+    Returns:
+        User: returns the new User object if user created
+    """
+    
+    user_dict = user_data.model_dump()
+    
+    user_dict["password_hash"] = hash_password(user_dict.pop("password"))
+    
+    db_user = User(**user_dict)
+    
+    
+    db.add(db_user)
+    db.commit()
+    db.refresh(db_user)
+    
+    return db_user
+    
+    
+===== app/crud/report.py =====
+from app.models import Report, TestResult, TestMetadata
+from app.schemas import ReportMetadata, StandaloneTestRequest
+from sqlalchemy.orm import Session
+from sqlalchemy import func, Row
+from typing import List
+from .test_results import is_abnormal
+
+def create_report(db: Session, report: ReportMetadata, user_id: int, file_path: str) -> Report:
+    report_dict = report.model_dump()
+    report_dict["user_id"] = user_id
+    report_dict["status"] = "unverified"
+    report_dict["file_path"] = file_path
+
+    db_report = Report(**report_dict)
+    
+    
+    db.add(db_report)
+    db.flush()
+    
+    
+    return db_report
+
+def create_standalone_test(db: Session, user_id: int, data: StandaloneTestRequest) -> Report:
+    data_dict = data.model_dump()
+    
+    metadata_keys = {"file_name", "collection_date", "lab_name"}
+
+    report_dict = {k: data_dict[k] for k in metadata_keys if k in data_dict}
+
+    result_dict = {k: v for k, v in data_dict.items() if k not in metadata_keys} 
+    report_dict["user_id"] = user_id
+    report_dict["status"] = "verified"
+    
+    report = Report(**report_dict)
+    
+    meta_item = db.query(TestMetadata).filter(
+            TestMetadata.canonical_name == data_dict["test_name"]
+        ).first()
+        
+  
+    if not meta_item:
+        meta_item = TestMetadata(
+            canonical_name=data_dict["test_name"],
+            default_unit=data_dict.get("unit"),  
+            category=None,
+            description=None
+        )
+        db.add(meta_item)
+        db.flush()
+    
+    db.add(report)
+    db.flush()
+    db.refresh(report)
+
+    result_dict["report_id"] = report.report_id
+    result_dict["is_abnormal"] = is_abnormal(
+            data_dict["value"], 
+            data_dict["lower_bound"],
+            data_dict["upper_bound"],
+        )
+    result_dict["text_value"] = str(result_dict["value"])
+    result_dict["test_id"] = meta_item.test_id
+
+    result = TestResult(**result_dict)
+    db.add(result)
+    
+    return report
+
+def fetch_report(db: Session, user_id: int, report_id: int) -> Report | None:
+    report = db.query(Report).filter(Report.report_id == report_id, Report.user_id == user_id).first()
+        
+    return report
+
+def fetch_all_reports(db: Session, user_id: int) -> List[Row[tuple[Report, int]]]:
+    results = (
+    db.query(Report, func.count(TestResult.result_id).label("test_count"))
+    .outerjoin(TestResult, Report.report_id == TestResult.report_id)
+    .filter(Report.user_id == user_id)
+    .group_by(Report.report_id)
+    .all()
+    )
+    return results
+
+def delete_report(db: Session, user_id: int, report_id: int) -> bool:
+    report = fetch_report(db, user_id, report_id)
+    
+    if not report:
+        return False
+    
+    db.delete(report)
+    db.commit()
+    
+    return True
+
+        
+    
+===== app/crud/test_results.py =====
+from app.models import Report, TestResult, TestMetadata
+from app.schemas import ReportRow
+from sqlalchemy.orm import Session, joinedload
+from typing import List
+
+def is_abnormal(value: float, lower_bound: float | None, upper_bound: float | None) -> bool | None:
+    if lower_bound is None and upper_bound is None:
+        return None
+
+    if upper_bound is not None and value > upper_bound:
+        return True
+
+    if lower_bound is not None and value < lower_bound:
+        return True
+
+    return False
+
+def add_test_data(db: Session, data: List[ReportRow], report_id: int):
+    db_tests = []
+    
+    for ele in data:
+        row_dict = ele.model_dump()
+        test_name_clean = row_dict["test_name"].strip()
+        
+        meta_item = db.query(TestMetadata).filter(
+            TestMetadata.canonical_name == test_name_clean
+        ).first()
+        
+  
+        if not meta_item:
+            meta_item = TestMetadata(
+                canonical_name=test_name_clean,
+                default_unit=row_dict.get("unit"),  
+                category=None,
+                description=None
+            )
+            db.add(meta_item)
+            db.flush() 
+            
+        row_dict["is_abnormal"] = is_abnormal(
+            row_dict["value"], 
+            row_dict["lower_bound"],
+            row_dict["upper_bound"],
+        )
+        
+        row_dict["report_id"] = report_id
+        row_dict["test_id"] = meta_item.test_id
+        row_dict["text_value"] = str(row_dict["value"])
+        
+        db_item = TestResult(**row_dict)
+        db_tests.append(db_item)
+        
+    db.add_all(db_tests)
+    db.flush()
+    
+def delete_results_for_report(db: Session, report_id: int, user_id: int) -> bool:
+    check_report_id = db.query(Report.report_id).filter(Report.report_id == report_id, Report.user_id == user_id).first()
+    
+    if not check_report_id:
+        return False
+    
+    db.query(TestResult).filter(TestResult.report_id == report_id).delete(synchronize_session=False)
+    db.flush()
+    
+    return True
+
+
+def fetch_results_for_report(db: Session, report_id: int, user_id: int) -> list[TestResult] | None:
+    results = (
+    db.query(TestResult)
+    .options(joinedload(TestResult.report))
+    .join(Report, Report.report_id == TestResult.report_id)
+    .filter(TestResult.report_id == report_id, Report.user_id == user_id)
+    .all()
+    )
+    return results if results else None
+
+def get_biomarker_history(db: Session, user_id: int, biomarker_name: str) -> List[TestResult] | None:
+    results = (
+        db.query(TestResult)
+        .join(Report, Report.report_id == TestResult.report_id)
+        .filter(Report.user_id == user_id, TestResult.test_name == biomarker_name)
+        .order_by(Report.collection_date.asc())
+        .all()
+    )
+    return results if results else None
+  
+  
+def get_test_names(db: Session, user_id: int) -> List[str] | None:
+    results = (
+        db.query(TestResult.test_name).distinct()
+        .join(Report, Report.report_id == TestResult.report_id)
+        .filter(Report.user_id == user_id)
+        .all()
+    )
+    return [r[0] for r in results] if results else None
+
+===== app/services/parse_pdf.py =====
+import pdfplumber
+import re
+from app.utils import validate
+from typing import Tuple, List
+from pathlib import Path
+
+class BloodReportParser:
+    def is_valid_result(self, line):
+        pattern = r"(.*?)\s+(\d+\.?\d*)(?:\s+([a-zA-Z/%.<>]+))?\s+(.*)"
+        return re.search(pattern, line)
+    
+    def extract_bounds(self, ref: str) -> Tuple[float | None, float | None]:
+        try:    
+            if not isinstance(ref, str):
+                return None, None
+
+            ref = ref.strip()
+            if not ref:
+                return None, None
+
+            parts = [p.strip() for p in ref.split(",")]
+            
+
+            for part in parts:
+                tokens = part.split()
+                if len(tokens) == 3 and tokens[1] == "-":
+                    lower = float(tokens[0])
+                    upper = float(tokens[2])
+                    return lower, upper
+
+            for part in parts:
+                if part.startswith("<"):
+                    value = float(part.replace("<", "").strip())
+                    return None, value
+
+                if part.startswith(">"):
+                    value = float(part.replace(">", "").strip())
+                    return value, None
+
+            return None, None
+
+        except Exception as e:
+            print(e)
+            return None, None
+
+    def parse(self, file_path : Path) -> list[dict]:
+        extracted_data = []
+        try:
+            with pdfplumber.open(file_path) as pdf:
+                for page in pdf.pages:
+                    text = page.extract_text()
+                    if not text: continue
+                    
+                    for line in text.split('\n'):
+                        match = self.is_valid_result(line)
+                        if match:
+                            name, val, unit, ref = match.groups()
+                            lowerbound, upperbound = self.extract_bounds(ref)
+                            if validate(name, float(val), unit, ref):
+                                extracted_data.append({
+                                    "test_name": name.strip(),
+                                    "value": float(val.strip()),
+                                    "unit": unit.strip() if unit else None,
+                                    "lower_bound": lowerbound,
+                                    "upper_bound" : upperbound
+                                })
+            return extracted_data
+        except Exception as e:
+            print(e)
+            return []
+def get_report_data(file_path: Path):
+    parser = BloodReportParser()
+    return parser.parse(file_path)
+
+
+
+===== app/services/get_metadata.py =====
+import pdfplumber
+import re
+from datetime import datetime, date as dt
+from app.schemas import ReportMetadata
+
+class Metadata:
+    def __init__(self,):
+        self.date: dt | None = dt.today()      
+        self.lab_name: str | None = None   
+
+    def collect_date(self, line):
+        pattern = re.compile(
+        r'\b(reported|date|collected)\b'
+        r'(?!\s+(at|from|in))'
+        r'\s*[:\-]?\s*'
+        r'(.+?)(?=\b(reported|date|collected)\b|$)',
+        re.IGNORECASE
+        )
+        return re.search(pattern, line) 
+    
+    def collect_lab_name(self, first_page_text: str):
+        if not first_page_text:
+            return
+        keywords = ["diagnostics", "lab", "laboratory", "pathlab"]
+        line = first_page_text.split("\n")[0]
+            
+        if any(word in line.lower().strip() for word in keywords):    
+            self.lab_name = line
+
+    def parse_datetime(self, raw: str):
+        formats = [
+            "%d/%m/%Y %I:%M:%S%p",
+            "%d/%m/%Y %I:%M%p",
+            "%d-%m-%Y %I:%M:%S%p",
+            "%Y-%m-%d %H:%M:%S",
+        ]
+
+        for fmt in formats:
+            try:
+                parsed = datetime.strptime(raw, fmt)
+                return parsed.date()  
+            except ValueError:
+                pass
+
+        return None
+
+    
+
+    def collect_metadata(self, file_path: str, name: str) -> ReportMetadata:
+        seen_lines = set()   
+
+        with pdfplumber.open(file_path) as pdf:
+            self.collect_lab_name(pdf.pages[0].extract_text())
+            for page in pdf.pages:
+                text = page.extract_text()
+                if not text:
+                    continue
+
+                for line in text.split('\n'):
+                    if line in seen_lines: continue
+                    date = self.collect_date(line.lower())
+                    
+                    
+                    if date:
+                        self.date = self.parse_datetime(date.group(3).strip())
+                        seen_lines.add(line)
+        
+        return ReportMetadata(
+            collection_date=self.date if self.date is not None else dt.today(),
+            lab_name=self.lab_name,
+            file_name=name
+        )
+
+
+def get_metadata(file_path, name):
+    parser = Metadata()
+    return parser.collect_metadata(file_path, name)
+
+
+
+
+===== app/services/database_service.py =====
+from sqlalchemy.orm import Session
+from app.schemas import ReportMetadata, ReportRow
+from app.crud.report import create_report
+from app.crud.test_results import add_test_data
+from app.models import Report
+
+def save_report(db: Session, raw_results: list[dict], report_metadata: ReportMetadata, user_id: int, file_path: str) -> Report:
+    try:
+        report = create_report(db, report_metadata, user_id, file_path)
+    
+        rows = [ReportRow(**row) for row in raw_results]
+    
+    
+        add_test_data(db, rows, report.report_id)
+        
+        db.commit()
+        db.refresh(report)
+        
+        return report
+    except Exception:
+        db.rollback()
+        raise 
+===== app/utils/validation.py =====
+def validate_test_name(name):
+    '''
+    Docstring for validate_test_name
+    
+    name -- the string to verify
+    return False if invalid
+    return True if valid
+    '''
+    if name == None:
+        return False
+    if len(name) < 2 or len(name) > 50:
+        return False
+    return True
+
+def validate_test_values(val):
+    '''
+    Docstring for validate_test_values
+    
+    val -- numeric string to be verified
+    return False if invalid
+    return True if valid
+    '''
+    if val == None:
+        return False
+    if val < 0 or val > 99999999:
+        return False
+    return True
+
+def validate_test_units(unit):
+    '''
+    Docstring for validate_test_units
+    
+    unit -- string to be verified
+
+    return False if invalid
+    return True if valid
+    '''
+    if unit == None:
+        return True
+    if len(unit) > 15:
+        return False
+    return True
+
+def validate_test_ref_ranges(ref_range):
+    '''
+    Docstring for validate_test_ref_ranges
+    
+    ref_range -- string to be validated
+
+    return False if invalid
+    return True if valid
+    '''
+    if ref_range == None:
+        return True
+    if len(ref_range) == 0:
+        return True
+    if len(ref_range) > 20:
+        return False
+    
+    if not ('-' in ref_range or '>' in ref_range or '<' in ref_range):
+        return False
+    return True
+
+
+def validate(name, val, unit, ref):
+    return validate_test_name(name) & validate_test_values(val) & validate_test_units(unit) & validate_test_ref_ranges(ref)
+===== app/db/seed_data.py =====
+
+===== docker-compose.yml =====
+services:
+  db:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: admin
+      POSTGRES_PASSWORD: admin123
+      POSTGRES_DB: bloodtest
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+volumes:
+  postgres_data:
+===== requirements.txt =====
+fastapi==0.115.0
+uvicorn[standard]==0.30.6
+sqlalchemy==2.0.35
+alembic==1.13.3
+pydantic==2.9.2
+pydantic-settings==2.5.2
+psycopg2-binary==2.9.9
+python-multipart==0.0.12
+python-jose[cryptography]==3.3.0
+bcrypt==4.2.0
+pdfplumber==0.11.4
+pandas==2.2.3
+python-dateutil==2.9.0

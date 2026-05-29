@@ -149,6 +149,7 @@ def delete(report_id: int,
     file_path = report.file_path
     
     delete_report(db, user.user_id, report_id)
+    db.commit()
     if file_path and Path(file_path).exists():
         Path(file_path).unlink()
                 
