@@ -40,7 +40,6 @@ class BloodReportParser:
             return None, None
 
         except Exception as e:
-            print(e)
             return None, None
 
     def parse(self, file_path : Path) -> list[dict]:
@@ -66,7 +65,6 @@ class BloodReportParser:
                                 })
             return extracted_data
         except Exception as e:
-            print(e)
             return []
 def get_report_data(file_path: Path):
     parser = BloodReportParser()

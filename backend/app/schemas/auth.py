@@ -13,7 +13,7 @@ def email_validator(email : str) -> str:
         email (str): The email provided to the function
 
     Returns:
-        bool: True is email is valid, False otherwise
+        str: The validated email provided by the user
     """
     
     REGEX = r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,7}"
@@ -23,14 +23,14 @@ def email_validator(email : str) -> str:
     return email
 
 
-def passwrd_validator(password: str) -> str:
+def password_validator(password: str) -> str:
     """Check if input password is valid or not
 
     Args:
         password (str): The input password
 
     Returns:
-        bool: True if password valid, false otherwise
+        str: The validated password provided by the user
     """
     
     PASSWORD_REGEX = re.compile(
@@ -44,17 +44,17 @@ def passwrd_validator(password: str) -> str:
 
 class Register(BaseModel):
     email: Annotated[str, AfterValidator(email_validator)]
-    password: Annotated[str, AfterValidator(passwrd_validator)]
+    password: Annotated[str, AfterValidator(password_validator)]
     full_name: str
-    phone_country_code : Optional[str]
-    phone_number: Optional[str]
-    date_of_birth: Optional[date]
+    phone_country_code : Optional[str] = None
+    phone_number: Optional[str] = None
+    date_of_birth: Optional[date] = None
     
 class Login(BaseModel):
     email: Annotated[str, AfterValidator(email_validator)]
-    password: Annotated[str, AfterValidator(passwrd_validator)]
+    password: Annotated[str, AfterValidator(password_validator)]
     
-class Token_response(BaseModel):
+class TokenResponse(BaseModel):
     access_token: str
     token_type: str = "bearer"
     

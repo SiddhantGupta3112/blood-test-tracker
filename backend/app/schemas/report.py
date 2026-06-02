@@ -1,6 +1,6 @@
 from pydantic import AfterValidator, BaseModel
 from typing import Optional, Annotated, List
-from datetime import date, datetime, timezone
+from datetime import date
 
 def check_date(value: date) -> date:
     if value > date.today():
@@ -10,21 +10,21 @@ def check_date(value: date) -> date:
 class ReportRow(BaseModel):
     test_name: str
     value: float
-    unit: Optional[str]
-    lower_bound: Optional[float]
-    upper_bound: Optional[float]
+    unit: Optional[str] = None
+    lower_bound: Optional[float] = None
+    upper_bound: Optional[float] = None
     
     model_config = {"from_attributes": True}
     
 class TestResultResponse(BaseModel):
     value: float
-    unit: Optional[str]
-    lower_bound: Optional[float]
-    upper_bound: Optional[float]
+    unit: Optional[str] = None
+    lower_bound: Optional[float] = None
+    upper_bound: Optional[float] = None
     is_abnormal: Optional[bool] = None
     collection_date: date
-    age: Optional[int]
-    lab_name: Optional[str]
+    age: Optional[int] = None
+    lab_name: Optional[str] = None
     
     model_config = {"from_attributes": True}
     
@@ -34,8 +34,8 @@ class BiomarkerHistory(BaseModel):
     
 class ReportMetadata(BaseModel):
     collection_date: Annotated[date, AfterValidator(check_date)]
-    lab_name: Optional[str]
-    file_name: Optional[str]
+    lab_name: Optional[str] = None
+    file_name: Optional[str] = None
     
     model_config = {"from_attributes": True}
     
@@ -54,19 +54,19 @@ class ReportSummary(BaseModel):
     report_id: int
     file_name: str # will be test_name for standalone tests
     collection_date: date
-    age: Optional[int]
-    lab_name: Optional[str]
+    age: Optional[int] = None
+    lab_name: Optional[str] = None
     number_of_test: int
     
 class StandaloneTestRequest(BaseModel):
     file_name: str
     test_name: str
     collection_date: Annotated[date, AfterValidator(check_date)]
-    lab_name: Optional[str]
+    lab_name: Optional[str] = None
     value: float
-    unit: Optional[str]
-    lower_bound: Optional[float]
-    upper_bound: Optional[float]
+    unit: Optional[str] = None
+    lower_bound: Optional[float] = None
+    upper_bound: Optional[float] = None
     
     
     

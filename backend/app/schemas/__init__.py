@@ -1,2 +1,2 @@
-from .auth import Register, Login, Token_response, UserResponse
+from .auth import Register, Login, TokenResponse, UserResponse
 from .report import ReportMetadata, Report, ReportRow, Validation, ReportSummary, StandaloneTestRequest, TestResultResponse, BiomarkerHistory

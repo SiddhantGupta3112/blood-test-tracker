@@ -2,7 +2,7 @@ from fastapi import (APIRouter, HTTPException,
                      status, Depends, File, 
                      UploadFile)
 import shutil
-from app.models import User, TestResult
+from app.models import User
 from app.api.deps import get_db, get_current_user
 from sqlalchemy.orm import Session
 from app.core.config import settings
@@ -29,11 +29,14 @@ def upload_pdf(
             detail="Uploaded file is missing a valid filename."
         )
         
-    if file.content_type != "application/pdf":
+    file_extension = Path(file.filename).suffix.lower()
+
+    if file_extension not in settings.ALLOWED_EXTENSIONS:
         raise HTTPException(
-            status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
-            detail="File not PDF"
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"File extension '{file_extension}' not allowed. Supported: {', '.join(settings.ALLOWED_EXTENSIONS)}"
         )
+        
     unique_name = f"{uuid.uuid4()}_{file.filename}"
     file_path = settings.UPLOAD_DIR / unique_name
          
@@ -50,7 +53,6 @@ def upload_pdf(
             report_data=[ReportRow(**row) for row in data]
         )
     except Exception as e:
-        print(f"UPLOAD ERROR: {type(e).__name__}: {e}")
         if file_path.exists():
             file_path.unlink()
         raise HTTPException(
@@ -108,7 +110,7 @@ def standalone_test(data: StandaloneTestRequest, user: User = Depends(get_curren
         db.rollback()
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Test verificaion failed"
+            detail=f"Test verification failed"
     )
         
 @router.get("/reports", response_model=list[ReportSummary], status_code=status.HTTP_200_OK)

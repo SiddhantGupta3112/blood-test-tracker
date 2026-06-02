@@ -1,5 +1,5 @@
 from fastapi import APIRouter, HTTPException, status, Depends
-from app.schemas import Login, Token_response, Register, UserResponse
+from app.schemas import Login, TokenResponse, Register, UserResponse
 from sqlalchemy.orm import Session
 from app.api.deps import get_db, get_current_user
 from app.models import User
@@ -9,7 +9,7 @@ from sqlalchemy.exc import IntegrityError
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
-@router.post("/login", response_model=Token_response)
+@router.post("/login", response_model=TokenResponse)
 def login(user_data: Login, db: Session = Depends(get_db)):
     user = fetch_user_by_email(db, user_data.email)
     
@@ -20,7 +20,7 @@ def login(user_data: Login, db: Session = Depends(get_db)):
             headers={"WWW-Authenticate": "Bearer"}
         )
           
-    return Token_response(
+    return TokenResponse(
         access_token=create_access_token(user.user_id)
     )
 

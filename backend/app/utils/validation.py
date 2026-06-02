@@ -6,9 +6,9 @@ def validate_test_name(name):
     return False if invalid
     return True if valid
     '''
-    if name == None:
+    if name is None:
         return False
-    if len(name) < 2 or len(name) > 50:
+    if len(name) < 2 or len(name) > 150:
         return False
     return True
 
@@ -20,7 +20,7 @@ def validate_test_values(val):
     return False if invalid
     return True if valid
     '''
-    if val == None:
+    if val is None:
         return False
     if val < 0 or val > 99999999:
         return False
@@ -63,4 +63,4 @@ def validate_test_ref_ranges(ref_range):
 
 
 def validate(name, val, unit, ref):
-    return validate_test_name(name) & validate_test_values(val) & validate_test_units(unit) & validate_test_ref_ranges(ref)
+    return validate_test_name(name) and validate_test_values(val) and validate_test_units(unit) and validate_test_ref_ranges(ref)

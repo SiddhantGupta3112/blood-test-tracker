@@ -88,7 +88,7 @@ def delete_report(db: Session, user_id: int, report_id: int) -> bool:
         return False
     
     db.delete(report)
-    db.commit()
+    db.flush()
     
     return True
 

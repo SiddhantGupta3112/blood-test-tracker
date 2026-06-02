@@ -1,16 +1,16 @@
 import bcrypt
-from jose import jwt, JWTError
+import jwt
 from datetime import datetime, timedelta, timezone
 from .config import settings
 
 def hash_password(plain_text: str) -> str:
-    """Hashes a plaintext pasword using the bcrypt algorithm
+    """Hashes a plaintext password using the Bcrypt algorithm
     
     Args:
         plain_text(str): unhashed password provided by the user.
         
     Returns:
-        str: the final haashed and encoded bcrypt hash string.
+        str: the final hashed and encoded bcrypt hash string.
         
     Raises:
         TypeError: If plain_text is not a string.
@@ -27,7 +27,7 @@ def verify_password(plain_text: str, password_hash: str) -> bool:
 
     Args:
         plain_text (str): The plaintext password provided by the user
-        password_hash (str): The encoded bcrytpt hash stored in the db
+        password_hash (str): The encoded bcrypt hash stored in the db
 
     Returns:
         bool: True if passwords match, False otherwise
@@ -75,7 +75,7 @@ def decode_jwt_token(token: str) -> int | None:
         claims = jwt.decode(token, settings.JWT_SECRET, algorithms=[settings.JWT_ALGORITHM])
         return int(claims['sub'])
     
-    except (JWTError, KeyError, ValueError):
+    except (jwt.exceptions.InvalidTokenError, KeyError, ValueError):
         return None
         
     

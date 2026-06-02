@@ -78,8 +78,9 @@ def fetch_results_for_report(db: Session, report_id: int, user_id: int) -> list[
 def get_biomarker_history(db: Session, user_id: int, biomarker_name: str) -> List[TestResult] | None:
     results = (
         db.query(TestResult)
+        .options(joinedload(TestResult.report))
         .join(Report, Report.report_id == TestResult.report_id)
-        .filter(Report.user_id == user_id, TestResult.test_name == biomarker_name)
+        .filter(Report.user_id == user_id, TestResult.test_name == biomarker_name, Report.status == "verified")
         .order_by(Report.collection_date.asc())
         .all()
     )
@@ -90,7 +91,7 @@ def get_test_names(db: Session, user_id: int) -> List[str] | None:
     results = (
         db.query(TestResult.test_name).distinct()
         .join(Report, Report.report_id == TestResult.report_id)
-        .filter(Report.user_id == user_id)
+        .filter(Report.user_id == user_id, Report.status == 'verified')
         .all()
     )
     return [r[0] for r in results] if results else None

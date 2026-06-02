@@ -1,4 +1,4 @@
-]633;E;for f in app/main.py app/core/config.py app/core/security.py app/db/session.py app/models/medical.py app/models/base.py app/schemas/report.py app/schemas/auth.py app/api/deps.py app/api/auth_routes.py app/api/pdf_routes.py app/api/plots_routes.py app/crud/user.py app/crud/report.py app/crud/test_results.py app/services/parse_pdf.py app/services/get_metadata.py app/services/database_service.py app/utils/validation.py app/db/seed_data.py docker-compose.yml requirements.txt;23dca3c4-e9de-4541-8783-82b0e0abfa5f]633;C===== app/main.py =====
+]633;E;for f in app/main.py app/core/config.py app/core/security.py app/db/session.py app/models/medical.py app/models/base.py app/schemas/report.py app/schemas/auth.py app/api/deps.py app/api/auth_routes.py app/api/pdf_routes.py app/api/plots_routes.py app/crud/user.py app/crud/report.py app/crud/test_results.py app/services/parse_pdf.py app/services/get_metadata.py app/services/database_service.py app/utils/validation.py app/db/seed_data.py docker-compose.yml requirements.txt alembic/env.py;a1f2ab74-a3d8-439f-b7ee-159e10cfd54a]633;C===== app/main.py =====
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.api.auth_routes import router as auth_router
@@ -14,7 +14,6 @@ origins = [
     "http://127.0.0.1:5173",
 ]
 
-# 2. Add the Middleware to the app
 app.add_middleware(
     CORSMiddleware,
     allow_origins=origins,            # Allows specific origins
@@ -23,7 +22,6 @@ app.add_middleware(
     allow_headers=["*"],              # Allows all headers
 )
 
-# Include your routers
 app.include_router(auth_router)
 app.include_router(pdf_router)
 app.include_router(plot_router)
@@ -56,18 +54,18 @@ class Settings(BaseSettings):
 settings = Settings() # type: ignore
 ===== app/core/security.py =====
 import bcrypt
-from jose import jwt, JWTError
+import jwt
 from datetime import datetime, timedelta, timezone
 from .config import settings
 
 def hash_password(plain_text: str) -> str:
-    """Hashes a plaintext pasword using the bcrypt algorithm
+    """Hashes a plaintext password using the Bcrypt algorithm
     
     Args:
         plain_text(str): unhashed password provided by the user.
         
     Returns:
-        str: the final haashed and encoded bcrypt hash string.
+        str: the final hashed and encoded bcrypt hash string.
         
     Raises:
         TypeError: If plain_text is not a string.
@@ -84,7 +82,7 @@ def verify_password(plain_text: str, password_hash: str) -> bool:
 
     Args:
         plain_text (str): The plaintext password provided by the user
-        password_hash (str): The encoded bcrytpt hash stored in the db
+        password_hash (str): The encoded bcrypt hash stored in the db
 
     Returns:
         bool: True if passwords match, False otherwise
@@ -132,7 +130,7 @@ def decode_jwt_token(token: str) -> int | None:
         claims = jwt.decode(token, settings.JWT_SECRET, algorithms=[settings.JWT_ALGORITHM])
         return int(claims['sub'])
     
-    except (JWTError, KeyError, ValueError):
+    except (jwt.exceptions.InvalidTokenError, KeyError, ValueError):
         return None
         
     
@@ -251,7 +249,7 @@ class Base(DeclarativeBase):
 ===== app/schemas/report.py =====
 from pydantic import AfterValidator, BaseModel
 from typing import Optional, Annotated, List
-from datetime import date, datetime, timezone
+from datetime import date
 
 def check_date(value: date) -> date:
     if value > date.today():
@@ -261,21 +259,21 @@ def check_date(value: date) -> date:
 class ReportRow(BaseModel):
     test_name: str
     value: float
-    unit: Optional[str]
-    lower_bound: Optional[float]
-    upper_bound: Optional[float]
+    unit: Optional[str] = None
+    lower_bound: Optional[float] = None
+    upper_bound: Optional[float] = None
     
     model_config = {"from_attributes": True}
     
 class TestResultResponse(BaseModel):
     value: float
-    unit: Optional[str]
-    lower_bound: Optional[float]
-    upper_bound: Optional[float]
+    unit: Optional[str] = None
+    lower_bound: Optional[float] = None
+    upper_bound: Optional[float] = None
     is_abnormal: Optional[bool] = None
     collection_date: date
-    age: Optional[int]
-    lab_name: Optional[str]
+    age: Optional[int] = None
+    lab_name: Optional[str] = None
     
     model_config = {"from_attributes": True}
     
@@ -285,8 +283,8 @@ class BiomarkerHistory(BaseModel):
     
 class ReportMetadata(BaseModel):
     collection_date: Annotated[date, AfterValidator(check_date)]
-    lab_name: Optional[str]
-    file_name: Optional[str]
+    lab_name: Optional[str] = None
+    file_name: Optional[str] = None
     
     model_config = {"from_attributes": True}
     
@@ -305,19 +303,19 @@ class ReportSummary(BaseModel):
     report_id: int
     file_name: str # will be test_name for standalone tests
     collection_date: date
-    age: Optional[int]
-    lab_name: Optional[str]
+    age: Optional[int] = None
+    lab_name: Optional[str] = None
     number_of_test: int
     
 class StandaloneTestRequest(BaseModel):
     file_name: str
     test_name: str
     collection_date: Annotated[date, AfterValidator(check_date)]
-    lab_name: Optional[str]
+    lab_name: Optional[str] = None
     value: float
-    unit: Optional[str]
-    lower_bound: Optional[float]
-    upper_bound: Optional[float]
+    unit: Optional[str] = None
+    lower_bound: Optional[float] = None
+    upper_bound: Optional[float] = None
     
     
     
@@ -337,7 +335,7 @@ def email_validator(email : str) -> str:
         email (str): The email provided to the function
 
     Returns:
-        bool: True is email is valid, False otherwise
+        str: The validated email provided by the user
     """
     
     REGEX = r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,7}"
@@ -347,14 +345,14 @@ def email_validator(email : str) -> str:
     return email
 
 
-def passwrd_validator(password: str) -> str:
+def password_validator(password: str) -> str:
     """Check if input password is valid or not
 
     Args:
         password (str): The input password
 
     Returns:
-        bool: True if password valid, false otherwise
+        str: The validated password provided by the user
     """
     
     PASSWORD_REGEX = re.compile(
@@ -368,17 +366,17 @@ def passwrd_validator(password: str) -> str:
 
 class Register(BaseModel):
     email: Annotated[str, AfterValidator(email_validator)]
-    password: Annotated[str, AfterValidator(passwrd_validator)]
+    password: Annotated[str, AfterValidator(password_validator)]
     full_name: str
-    phone_country_code : Optional[str]
-    phone_number: Optional[str]
-    date_of_birth: Optional[date]
+    phone_country_code : Optional[str] = None
+    phone_number: Optional[str] = None
+    date_of_birth: Optional[date] = None
     
 class Login(BaseModel):
     email: Annotated[str, AfterValidator(email_validator)]
-    password: Annotated[str, AfterValidator(passwrd_validator)]
+    password: Annotated[str, AfterValidator(password_validator)]
     
-class Token_response(BaseModel):
+class TokenResponse(BaseModel):
     access_token: str
     token_type: str = "bearer"
     
@@ -441,7 +439,7 @@ def get_current_user(
     return user
 ===== app/api/auth_routes.py =====
 from fastapi import APIRouter, HTTPException, status, Depends
-from app.schemas import Login, Token_response, Register, UserResponse
+from app.schemas import Login, TokenResponse, Register, UserResponse
 from sqlalchemy.orm import Session
 from app.api.deps import get_db, get_current_user
 from app.models import User
@@ -451,7 +449,7 @@ from sqlalchemy.exc import IntegrityError
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
-@router.post("/login", response_model=Token_response)
+@router.post("/login", response_model=TokenResponse)
 def login(user_data: Login, db: Session = Depends(get_db)):
     user = fetch_user_by_email(db, user_data.email)
     
@@ -462,7 +460,7 @@ def login(user_data: Login, db: Session = Depends(get_db)):
             headers={"WWW-Authenticate": "Bearer"}
         )
           
-    return Token_response(
+    return TokenResponse(
         access_token=create_access_token(user.user_id)
     )
 
@@ -490,7 +488,7 @@ from fastapi import (APIRouter, HTTPException,
                      status, Depends, File, 
                      UploadFile)
 import shutil
-from app.models import User, TestResult
+from app.models import User
 from app.api.deps import get_db, get_current_user
 from sqlalchemy.orm import Session
 from app.core.config import settings
@@ -517,11 +515,14 @@ def upload_pdf(
             detail="Uploaded file is missing a valid filename."
         )
         
-    if file.content_type != "application/pdf":
+    file_extension = Path(file.filename).suffix.lower()
+
+    if file_extension not in settings.ALLOWED_EXTENSIONS:
         raise HTTPException(
-            status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
-            detail="File not PDF"
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"File extension '{file_extension}' not allowed. Supported: {', '.join(ALLOWED_EXTENSIONS)}"
         )
+        
     unique_name = f"{uuid.uuid4()}_{file.filename}"
     file_path = settings.UPLOAD_DIR / unique_name
          
@@ -538,7 +539,6 @@ def upload_pdf(
             report_data=[ReportRow(**row) for row in data]
         )
     except Exception as e:
-        print(f"UPLOAD ERROR: {type(e).__name__}: {e}")
         if file_path.exists():
             file_path.unlink()
         raise HTTPException(
@@ -596,7 +596,7 @@ def standalone_test(data: StandaloneTestRequest, user: User = Depends(get_curren
         db.rollback()
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Test verificaion failed"
+            detail=f"Test verification failed"
     )
         
 @router.get("/reports", response_model=list[ReportSummary], status_code=status.HTTP_200_OK)
@@ -877,7 +877,7 @@ def delete_report(db: Session, user_id: int, report_id: int) -> bool:
         return False
     
     db.delete(report)
-    db.commit()
+    db.flush()
     
     return True
 
@@ -964,8 +964,9 @@ def fetch_results_for_report(db: Session, report_id: int, user_id: int) -> list[
 def get_biomarker_history(db: Session, user_id: int, biomarker_name: str) -> List[TestResult] | None:
     results = (
         db.query(TestResult)
+        .options(joinedload(TestResult.report))
         .join(Report, Report.report_id == TestResult.report_id)
-        .filter(Report.user_id == user_id, TestResult.test_name == biomarker_name)
+        .filter(Report.user_id == user_id, TestResult.test_name == biomarker_name, Report.status == "verified")
         .order_by(Report.collection_date.asc())
         .all()
     )
@@ -976,7 +977,7 @@ def get_test_names(db: Session, user_id: int) -> List[str] | None:
     results = (
         db.query(TestResult.test_name).distinct()
         .join(Report, Report.report_id == TestResult.report_id)
-        .filter(Report.user_id == user_id)
+        .filter(Report.user_id == user_id, Report.status == 'verified')
         .all()
     )
     return [r[0] for r in results] if results else None
@@ -1024,7 +1025,6 @@ class BloodReportParser:
             return None, None
 
         except Exception as e:
-            print(e)
             return None, None
 
     def parse(self, file_path : Path) -> list[dict]:
@@ -1050,7 +1050,6 @@ class BloodReportParser:
                                 })
             return extracted_data
         except Exception as e:
-            print(e)
             return []
 def get_report_data(file_path: Path):
     parser = BloodReportParser()
@@ -1172,9 +1171,9 @@ def validate_test_name(name):
     return False if invalid
     return True if valid
     '''
-    if name == None:
+    if name is None:
         return False
-    if len(name) < 2 or len(name) > 50:
+    if len(name) < 2 or len(name) > 150:
         return False
     return True
 
@@ -1186,7 +1185,7 @@ def validate_test_values(val):
     return False if invalid
     return True if valid
     '''
-    if val == None:
+    if val is None:
         return False
     if val < 0 or val > 99999999:
         return False
@@ -1229,7 +1228,7 @@ def validate_test_ref_ranges(ref_range):
 
 
 def validate(name, val, unit, ref):
-    return validate_test_name(name) & validate_test_values(val) & validate_test_units(unit) & validate_test_ref_ranges(ref)
+    return validate_test_name(name) and validate_test_values(val) and validate_test_units(unit) and validate_test_ref_ranges(ref)
 ===== app/db/seed_data.py =====
 
 ===== docker-compose.yml =====
@@ -1257,8 +1256,53 @@ pydantic==2.9.2
 pydantic-settings==2.5.2
 psycopg2-binary==2.9.9
 python-multipart==0.0.12
-python-jose[cryptography]==3.3.0
+PyJWT==2.13.0
 bcrypt==4.2.0
 pdfplumber==0.11.4
-pandas==2.2.3
-python-dateutil==2.9.0
+
+===== alembic/env.py =====
+from logging.config import fileConfig
+from sqlalchemy import engine_from_config, pool
+from alembic import context
+
+from app.core.config import settings
+from app.models.base import Base
+from app.models.medical import User, Report, TestMetadata, TestResult
+
+config = context.config
+config.set_main_option("sqlalchemy.url", str(settings.DATABASE_URL))
+
+if config.config_file_name is not None:
+    fileConfig(config.config_file_name)
+
+target_metadata = Base.metadata
+
+
+def run_migrations_offline() -> None:
+    url = config.get_main_option("sqlalchemy.url")
+    context.configure(
+        url=url,
+        target_metadata=target_metadata,
+        literal_binds=True,
+        dialect_opts={"paramstyle": "named"},
+    )
+    with context.begin_transaction():
+        context.run_migrations()
+
+
+def run_migrations_online() -> None:
+    connectable = engine_from_config(
+        config.get_section(config.config_ini_section, {}),
+        prefix="sqlalchemy.",
+        poolclass=pool.NullPool,
+    )
+    with connectable.connect() as connection:
+        context.configure(connection=connection, target_metadata=target_metadata)
+        with context.begin_transaction():
+            context.run_migrations()
+
+
+if context.is_offline_mode():
+    run_migrations_offline()
+else:
+    run_migrations_online()

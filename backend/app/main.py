@@ -13,7 +13,6 @@ origins = [
     "http://127.0.0.1:5173",
 ]
 
-# 2. Add the Middleware to the app
 app.add_middleware(
     CORSMiddleware,
     allow_origins=origins,            # Allows specific origins
@@ -22,7 +21,6 @@ app.add_middleware(
     allow_headers=["*"],              # Allows all headers
 )
 
-# Include your routers
 app.include_router(auth_router)
 app.include_router(pdf_router)
 app.include_router(plot_router)
