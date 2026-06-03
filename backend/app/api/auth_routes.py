@@ -7,9 +7,11 @@ from app.crud import fetch_user_by_email, create_new_user
 from app.core import verify_password, create_access_token
 from sqlalchemy.exc import IntegrityError
 
+from app.limiter.dependency import RateLimiter
+
 router = APIRouter(prefix="/auth", tags=["auth"])
 
-@router.post("/login", response_model=TokenResponse)
+@router.post("/login", response_model=TokenResponse, dependencies=[Depends(RateLimiter(5, 60))])
 def login(user_data: Login, db: Session = Depends(get_db)):
     user = fetch_user_by_email(db, user_data.email)
     

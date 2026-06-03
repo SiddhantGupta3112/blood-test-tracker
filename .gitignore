@@ -8,6 +8,7 @@ blood-test-tracker-venv/
 
 .env
 backend/.env
+backend/code_review.txt
 
 backend/uploads/
 

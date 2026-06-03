@@ -14,10 +14,11 @@ from app.services.get_metadata import get_metadata
 from app.crud.report import fetch_report, fetch_all_reports, delete_report, create_standalone_test
 from app.crud.test_results import add_test_data, delete_results_for_report
 from pathlib import Path
+from app.limiter.dependency import get_user_key, RateLimiter
 
 router = APIRouter(prefix="/pdf", tags=["pdf"])
 
-@router.post("/upload", response_model=ReportSchema, status_code=status.HTTP_201_CREATED)
+@router.post("/upload", response_model=ReportSchema, status_code=status.HTTP_201_CREATED, dependencies=[Depends(RateLimiter(10, 60, get_user_key))])
 def upload_pdf(
     file: UploadFile = File(...), 
     user: User = Depends(get_current_user), 
@@ -155,3 +156,27 @@ def delete(report_id: int,
     if file_path and Path(file_path).exists():
         Path(file_path).unlink()
                 
+                
+@router.patch("/reports/{report_id}", status_code=status.HTTP_200_OK)
+def update_status(report_id: int, 
+           user : User = Depends(get_current_user), 
+           db: Session = Depends(get_db)
+):
+    report = fetch_report(db, user.user_id, report_id)
+    if not report:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Report not found"
+        )
+      
+    if report.status != "unverified":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Only unverified reports can be marked as pending"
+        )
+          
+    report.status = "pending"
+    db.commit()
+    db.refresh(report)
+    
+    return {"message": f"Report {report_id} status updated to pending successfully"}

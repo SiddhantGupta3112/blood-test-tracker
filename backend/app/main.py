@@ -3,9 +3,20 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.api.auth_routes import router as auth_router
 from app.api.pdf_routes import router as pdf_router
 from app.api.plots_routes import router as plot_router
+from app.db.seed_data import seed_test_metadata
+from app.db import SessionLocal
+from contextlib import asynccontextmanager
 
-app = FastAPI()
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    db = SessionLocal()
+    try:
+        seed_test_metadata(db)
+    finally:
+        db.close()
+    yield
 
+app = FastAPI(lifespan=lifespan)
 
 origins = [
     "http://localhost:5173",  
@@ -20,6 +31,8 @@ app.add_middleware(
     allow_methods=["*"],              # Allows all methods (GET, POST, etc.)
     allow_headers=["*"],              # Allows all headers
 )
+
+
 
 app.include_router(auth_router)
 app.include_router(pdf_router)

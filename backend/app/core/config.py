@@ -9,6 +9,10 @@ class Settings(BaseSettings):
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 1440
     UPLOAD_DIR: Path = Path("uploads")
     ALLOWED_EXTENSIONS: frozenset[str] = frozenset({".pdf"})
+    REDIS_HOST: str
+    REDIS_PORT: int
+    REDIS_DB: int
+    REDIS_PASSWORD: str
 
     model_config = SettingsConfigDict(
         env_file=".env",

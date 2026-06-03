@@ -1,6 +1,7 @@
 services:
   db:
     image: postgres:16
+    container_name: postgres-db
     restart: unless-stopped
     environment:
       POSTGRES_USER: admin
@@ -11,5 +12,17 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
 
+  redis:
+    image: redis:latest
+    container_name: redis-rate-limiter
+    ports:
+      - '6379:6379'
+    volumes:
+      - redis-data:/data
+    command: redis-server --requirepass admin123 --appendonly yes
+    restart: unless-stopped
+
 volumes:
   postgres_data:
+  redis-data:
+    driver: local
