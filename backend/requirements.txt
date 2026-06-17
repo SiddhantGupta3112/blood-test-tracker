@@ -10,3 +10,7 @@ PyJWT==2.13.0
 bcrypt==4.2.0
 pdfplumber==0.11.4
 redis[hiredis]==5.2.1
+
+pytest
+pytest-asyncio
+httpx

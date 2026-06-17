@@ -6,16 +6,27 @@ from app.api.plots_routes import router as plot_router
 from app.db.seed_data import seed_test_metadata
 from app.db import SessionLocal
 from contextlib import asynccontextmanager
+import os
+
+import os
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    db = SessionLocal()
+    # Detect if we are running in pytest
+    if "PYTEST_CURRENT_TEST" in os.environ:
+        # Import inside the function to avoid circular imports
+        from tests.conftest import TestSessionLocal
+        db = TestSessionLocal()
+    else:
+        db = SessionLocal()
+
     try:
         seed_test_metadata(db)
     finally:
         db.close()
     yield
-
+    
+    
 app = FastAPI(lifespan=lifespan)
 
 origins = [

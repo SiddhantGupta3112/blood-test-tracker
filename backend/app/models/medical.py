@@ -57,6 +57,7 @@ class Report(Base):
 
 class TestMetadata(Base):
     __tablename__ = "test_metadata"
+    __test__ = False
 
     test_id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
     canonical_name: Mapped[str] = mapped_column(String(150), unique=True, nullable=False)
@@ -69,6 +70,7 @@ class TestMetadata(Base):
 
 class TestResult(Base):
     __tablename__ = "test_results"
+    __test__ = False
 
     result_id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
     report_id: Mapped[int] = mapped_column(
