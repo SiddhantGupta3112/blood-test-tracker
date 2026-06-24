@@ -57,7 +57,8 @@ class Metadata:
                     continue
 
                 for line in text.split('\n'):
-                    if line in seen_lines: continue
+                    if line in seen_lines: 
+                        continue
                     date = self.collect_date(line.lower())
                     
                     

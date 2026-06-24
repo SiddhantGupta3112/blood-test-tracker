@@ -1,1 +1,1 @@
-from .session import SessionLocal
+from .session import SessionLocal as SessionLocal

@@ -35,7 +35,7 @@ def validate_test_units(unit):
     return False if invalid
     return True if valid
     '''
-    if unit == None:
+    if unit is None:
         return True
     if len(unit) > 15:
         return False
@@ -50,7 +50,7 @@ def validate_test_ref_ranges(ref_range):
     return False if invalid
     return True if valid
     '''
-    if ref_range == None:
+    if ref_range is None:
         return True
     if len(ref_range) == 0:
         return True

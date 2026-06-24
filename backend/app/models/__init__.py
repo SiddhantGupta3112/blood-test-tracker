@@ -1,2 +1,7 @@
-from .base import Base
-from .medical import User, Report, TestMetadata, TestResult
+from .base import Base as Base
+from .medical import (
+    User as User, 
+    Report as Report, 
+    TestMetadata as TestMetadata, 
+    TestResult as TestResult
+    )

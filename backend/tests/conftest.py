@@ -1,18 +1,18 @@
 from dotenv import load_dotenv
 load_dotenv("tests/.env.test", override=True) 
 
-import os
-import pytest
-from sqlalchemy.orm import sessionmaker
-from sqlalchemy import create_engine
-from app.models.base import Base
-from app.api.deps import get_db
-from app.main import app
-from fastapi.testclient import TestClient
-from app.limiter.dependency import RateLimiter
-import redis as sync_redis
-import asyncio
-from app.limiter.redis_client import redis_client
+import os # noqa: E402
+import pytest # noqa: E402
+from sqlalchemy.orm import sessionmaker # noqa: E402
+from sqlalchemy import create_engine # noqa: E402
+from app.models.base import Base # noqa: E402
+from app.api.deps import get_db # noqa: E402
+from app.main import app # noqa: E402
+from fastapi.testclient import TestClient # noqa: E402
+#from app.limiter.dependency import RateLimiter # noqa: E402
+import redis as sync_redis # noqa: E402
+import asyncio # noqa: E402
+from app.limiter.redis_client import redis_client # noqa: E402
 
 
 
@@ -51,11 +51,22 @@ def client():
         
 @pytest.fixture(scope="function", autouse=True)
 def flush_test_redis():
+    
+    redis_host = os.getenv("REDIS_HOST")
+    redis_port_str = os.getenv("REDIS_PORT")
+    redis_db_str = os.getenv("REDIS_DB")
+    redis_password = os.getenv("REDIS_PASSWORD")
+    if not redis_host:
+        raise ValueError("REDIS_HOST environment variable is not set.")
+    if not redis_port_str:
+        raise ValueError("REDIS_PORT environment variable is not set.")
+    if not redis_db_str:
+        raise ValueError("REDIS_DB environment variable is not set.")
     client = sync_redis.Redis(
-        host=os.getenv("REDIS_HOST"),
-        port=int(os.getenv("REDIS_PORT")),
-        db=int(os.getenv("REDIS_DB")),
-        password=os.getenv("REDIS_PASSWORD"),
+        host=redis_host,
+        port=int(redis_port_str),
+        db=int(redis_db_str),
+        password=redis_password,
     )
     client.flushdb()
     yield
@@ -65,6 +76,9 @@ def flush_test_redis():
 def reset_async_redis_pool():
     yield
     try:
-        asyncio.run(redis_client.connection_pool.disconnect())
+        disconnect_coro = redis_client.connection_pool.disconnect()
+        
+        if disconnect_coro is not None:
+            asyncio.run(disconnect_coro)
     except RuntimeError:
         pass

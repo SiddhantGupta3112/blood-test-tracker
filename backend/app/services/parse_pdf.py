@@ -1,7 +1,7 @@
 import pdfplumber
 import re
 from app.utils import validate
-from typing import Tuple, List
+from typing import Tuple
 from pathlib import Path
 
 class BloodReportParser:
@@ -39,7 +39,7 @@ class BloodReportParser:
 
             return None, None
 
-        except Exception as e:
+        except Exception:
             return None, None
 
     def parse(self, file_path : Path) -> list[dict]:
@@ -48,7 +48,8 @@ class BloodReportParser:
             with pdfplumber.open(file_path) as pdf:
                 for page in pdf.pages:
                     text = page.extract_text()
-                    if not text: continue
+                    if not text: 
+                        continue
                     
                     for line in text.split('\n'):
                         match = self.is_valid_result(line)
@@ -64,7 +65,7 @@ class BloodReportParser:
                                     "upper_bound" : upperbound
                                 })
             return extracted_data
-        except Exception as e:
+        except Exception:
             return []
 def get_report_data(file_path: Path):
     parser = BloodReportParser()

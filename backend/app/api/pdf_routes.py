@@ -53,7 +53,7 @@ def upload_pdf(
             report_metadata=report_metadata,
             report_data=[ReportRow(**row) for row in data]
         )
-    except Exception as e:
+    except Exception:
         if file_path.exists():
             file_path.unlink()
         raise HTTPException(
@@ -111,7 +111,7 @@ def standalone_test(data: StandaloneTestRequest, user: User = Depends(get_curren
         db.rollback()
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Test verification failed"
+            detail="Test verification failed"
     )
         
 @router.get("/reports", response_model=list[ReportSummary], status_code=status.HTTP_200_OK)

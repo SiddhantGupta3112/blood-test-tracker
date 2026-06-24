@@ -8,7 +8,6 @@ from app.db import SessionLocal
 from contextlib import asynccontextmanager
 import os
 
-import os
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):

@@ -33,7 +33,7 @@ def register(user_data: Register, db: Session = Depends(get_db)):
         user = create_new_user(db, user_data)
         return user
         
-    except IntegrityError as e:
+    except IntegrityError:
         db.rollback()
         
         raise HTTPException(

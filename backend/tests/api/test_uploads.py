@@ -9,7 +9,7 @@ def test_upload_requires_auth(client):
 
 
 def test_upload_rejects_non_pdf(client):
-    register_resp = client.post("/auth/register/", json={
+    client.post("/auth/register/", json={
         "full_name": "Test user",
         "email": "test_user@email.com",
         "phone_country_code": "+91",
