@@ -32,7 +32,9 @@ jobs:
           --health-retries 5
 
       redis:
-        image: redis:latest
+        image: bitnami/redis:latest
+        env:
+          REDIS_PASSWORD: admin123
         ports:
           - 6379:6379
         options: >-
@@ -40,9 +42,6 @@ jobs:
           --health-interval 10s
           --health-timeout 5s
           --health-retries 5
-          --entrypoint redis-server
-          --
-          --requirepass admin123
 
     steps:
     - name: Check out repository
