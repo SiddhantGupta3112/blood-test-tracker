@@ -10,7 +10,7 @@ from .report import (
     ReportRow as ReportRow, 
     Validation as Validation, 
     ReportSummary as ReportSummary, 
-    StandaloneTestRequest as StandaloneTestRequest, 
+    StandaloneEntryRequest as StandaloneEntryRequest, 
     TestResultResponse as TestResultResponse, 
     BiomarkerHistory as BiomarkerHistory
 )

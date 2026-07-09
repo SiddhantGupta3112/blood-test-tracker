@@ -1,5 +1,5 @@
 from app.models import Report, TestResult, TestMetadata
-from app.schemas import ReportMetadata, StandaloneTestRequest
+from app.schemas import ReportMetadata, StandaloneEntryRequest
 from sqlalchemy.orm import Session
 from sqlalchemy import func, Row
 from typing import List
@@ -20,50 +20,51 @@ def create_report(db: Session, report: ReportMetadata, user_id: int, file_path: 
     
     return db_report
 
-def create_standalone_test(db: Session, user_id: int, data: StandaloneTestRequest) -> Report:
-    data_dict = data.model_dump()
-    
-    metadata_keys = {"file_name", "collection_date", "lab_name"}
+def create_standalone_test(
+    db: Session,
+    user_id: int,
+    data: StandaloneEntryRequest,
+) -> Report:
 
-    report_dict = {k: data_dict[k] for k in metadata_keys if k in data_dict}
+    # Create report
+    report = Report(
+        user_id=user_id,
+        file_name=data.file_name,
+        collection_date=data.collection_date,
+        lab_name=data.lab_name,
+        status="verified",
+    )
 
-    result_dict = {k: v for k, v in data_dict.items() if k not in metadata_keys} 
-    report_dict["user_id"] = user_id
-    report_dict["status"] = "verified"
-    
-    report = Report(**report_dict)
-    
-    meta_item = db.query(TestMetadata).filter(
-            TestMetadata.canonical_name == data_dict["test_name"]
-        ).first()
-        
-  
-    if not meta_item:
-        meta_item = TestMetadata(
-            canonical_name=data_dict["test_name"],
-            default_unit=data_dict.get("unit"),  
-            category=None,
-            description=None
-        )
-        db.add(meta_item)
-        db.flush()
-    
     db.add(report)
-    db.flush()
-    db.refresh(report)
+    db.flush()  # report_id becomes available
 
-    result_dict["report_id"] = report.report_id
-    result_dict["is_abnormal"] = is_abnormal(
-            data_dict["value"], 
-            data_dict["lower_bound"],
-            data_dict["upper_bound"],
+    for biomarker in data.biomarkers:
+        biomarker_data = biomarker.model_dump()
+
+        meta_item = (
+            db.query(TestMetadata)
+            .filter(TestMetadata.canonical_name == biomarker.test_name)
+            .first()
         )
-    result_dict["text_value"] = str(result_dict["value"])
-    result_dict["test_id"] = meta_item.test_id
 
-    result = TestResult(**result_dict)
-    db.add(result)
-    
+        if not meta_item:
+            meta_item = TestMetadata(
+                canonical_name=biomarker.test_name,
+                default_unit=biomarker.unit,
+            )
+            db.add(meta_item)
+            db.flush()
+
+        biomarker_data["report_id"] = report.report_id
+        biomarker_data["test_id"] = meta_item.test_id
+        biomarker_data["text_value"] = str(biomarker.value)
+        biomarker_data["is_abnormal"] = is_abnormal(
+            biomarker.value,
+            biomarker.lower_bound,
+            biomarker.upper_bound,
+        )
+
+        db.add(TestResult(**biomarker_data))
     return report
 
 def fetch_report(db: Session, user_id: int, report_id: int) -> Report | None:

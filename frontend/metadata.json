@@ -1,0 +1,6 @@
+{
+  "name": "Blood Test Tracker",
+  "description": "A clean, minimal, clinical personal blood test tracking dashboard to monitor biomarkers, upload PDF reports, and view historical health trends.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

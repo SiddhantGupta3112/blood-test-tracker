@@ -1,21 +1,46 @@
 __pycache__/
 *.pyc
 *.pyo
+*.pyd
+*.db
+
 .venv/
 venv/
 blood-test-tracker-venv/
-*.db
 
 .env
+.env.local
 backend/.env
-backend/code_review.txt
-backend/.dockerignore
 backend/tests/.env.test
-backend/code_review.txt
+backend/.dockerignore
 
+backend/code_review.txt
 backend/uploads/
+
+.coverage
+htmlcov/
+coverage/
 
 
 node_modules/
+build/
 dist/
-.env.local
+
+.env
+
+
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+*.tsbuildinfo
+
+
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.swp
+*.swo

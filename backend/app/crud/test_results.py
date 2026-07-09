@@ -95,3 +95,7 @@ def get_test_names(db: Session, user_id: int) -> List[str] | None:
         .all()
     )
     return [r[0] for r in results] if results else None
+
+def get_test_metadata(db: Session) -> List[str] | None:
+    results = db.query(TestMetadata.canonical_name).all()
+    return [row[0] for row in results] if results else None

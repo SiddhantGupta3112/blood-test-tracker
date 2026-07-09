@@ -10,17 +10,6 @@ from app.crud.test_results import  get_test_names, get_biomarker_history, fetch_
 
 router = APIRouter(prefix="/plots", tags=["plots"])
 
-@router.get("/tests", response_model=list[str], status_code=status.HTTP_200_OK)
-def get_unique_tests(db: Session = Depends(get_db), user: User = Depends(get_current_user)):
-    test_names = get_test_names(db, user.user_id)
-    
-    if not test_names:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="No tests found"
-        )
-        
-    return test_names
 
 @router.get("/history/{test_name}", response_model=BiomarkerHistory, status_code=status.HTTP_200_OK)
 def get_test_history(test_name: str, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
@@ -74,7 +63,19 @@ def get_results_for_report(report_id: int, db: Session = Depends(get_db), user: 
     result = Report(
         report_id=report_id,
         report_metadata=ReportMetadata.model_validate(metadata),
-        report_data=[ReportRow.model_validate(row) for row in data]
+        report_data=[ReportRow.model_validate(row) for row in data],
+        status=metadata.status,
     )
     
     return result
+
+@router.get(
+    "/my-tests",
+    response_model=list[str],
+    status_code=status.HTTP_200_OK,
+)
+def get_my_tests(
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    return get_test_names(db, user.user_id) or []

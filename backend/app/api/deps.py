@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 from app.models import User
 from app.crud import fetch_user_by_user_id
 
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login")
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/swagger-login")
 
 def get_db():
     """Provide a transactional database context dependency.

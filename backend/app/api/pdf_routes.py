@@ -7,16 +7,36 @@ from app.api.deps import get_db, get_current_user
 from sqlalchemy.orm import Session
 from app.core.config import settings
 import uuid
-from app.schemas import Report as ReportSchema, Validation, ReportSummary, ReportRow, StandaloneTestRequest
+from app.schemas import Report as ReportSchema, Validation, ReportSummary, ReportRow, StandaloneEntryRequest
 from app.services.database_service import save_report
 from app.services.parse_pdf import get_report_data
 from app.services.get_metadata import get_metadata
 from app.crud.report import fetch_report, fetch_all_reports, delete_report, create_standalone_test
-from app.crud.test_results import add_test_data, delete_results_for_report
+from app.crud.test_results import add_test_data, delete_results_for_report, get_test_metadata, get_test_names
 from pathlib import Path
 from app.limiter.dependency import get_user_key, RateLimiter
 
 router = APIRouter(prefix="/pdf", tags=["pdf"])
+
+def _apply_report_update(db: Session, report, response: Validation):
+    report_data = response.report_metadata.model_dump(exclude_unset=True)
+    for key, value in report_data.items():
+        setattr(report, key, value)
+    delete_results_for_report(db, report.report_id, report.user_id)
+    add_test_data(db, response.report_data, report.report_id)
+
+@router.get(
+    "/known-test-names",
+    response_model=list[str],
+    status_code=status.HTTP_200_OK,
+)
+def get_all_test_names(
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    return get_test_metadata(db) or []
+
+
 
 @router.post("/upload", response_model=ReportSchema, status_code=status.HTTP_201_CREATED, dependencies=[Depends(RateLimiter(10, 60, get_user_key))])
 def upload_pdf(
@@ -51,7 +71,8 @@ def upload_pdf(
         return ReportSchema(
             report_id=report.report_id,
             report_metadata=report_metadata,
-            report_data=[ReportRow(**row) for row in data]
+            report_data=[ReportRow(**row) for row in data],
+            status=report.status
         )
     except Exception:
         if file_path.exists():
@@ -77,14 +98,8 @@ def validate_report(report_id: int,
         
      
     try:
-        report_data = response.report_metadata.model_dump(exclude_unset=True)
-        for key, value in report_data.items():
-            setattr(report, key, value)
-        
+        _apply_report_update(db, report, response)
         report.status = "verified"
-        
-        delete_results_for_report(db, report.report_id, user.user_id)
-        add_test_data(db, response.report_data, report.report_id)
         
         db.commit()
         db.refresh(report)
@@ -99,7 +114,7 @@ def validate_report(report_id: int,
     )
         
 @router.post("/standalone", status_code=status.HTTP_201_CREATED)
-def standalone_test(data: StandaloneTestRequest, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+def standalone_test(data: StandaloneEntryRequest, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     try:
         report = create_standalone_test(db, user.user_id, data)
         db.commit()
@@ -128,7 +143,8 @@ def get_all_reports(user: User = Depends(get_current_user),
             age = (report.collection_date - user.date_of_birth).days // 365 if user.date_of_birth else None,
             number_of_test=number_of_test,
             file_name=report.file_name,
-            lab_name=report.lab_name
+            lab_name=report.lab_name,
+            status=report.status
         )
         
         summary.append(report_summary)
@@ -180,3 +196,33 @@ def update_status(report_id: int,
     db.refresh(report)
     
     return {"message": f"Report {report_id} status updated to pending successfully"}
+
+@router.patch("/reports/{report_id}/edit", status_code=status.HTTP_200_OK)
+def edit_report(report_id: int, 
+                    response: Validation, 
+                    db: Session = Depends(get_db), 
+                    user: User = Depends(get_current_user)
+):
+    
+    report = fetch_report(db, user.user_id, report_id)
+    if not report:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Report not found"
+        )
+         
+    try:
+        _apply_report_update(db, report, response)
+        
+        db.commit()
+        db.refresh(report)
+        
+        return {"message": f"Report {report_id} verified successfully"}
+
+    except Exception:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Report {report_id} verification failed"
+    )
+        

@@ -43,6 +43,7 @@ class ReportPayload(BaseModel):
     report_id: int
     report_metadata: ReportMetadata
     report_data: List[ReportRow]
+    status: Optional[str] = None
 
 class Report(ReportPayload):
     pass
@@ -57,16 +58,20 @@ class ReportSummary(BaseModel):
     age: Optional[int] = None
     lab_name: Optional[str] = None
     number_of_test: int
+    status: Optional[str] = None
     
-class StandaloneTestRequest(BaseModel):
-    file_name: str
+class StandaloneBiomarker(BaseModel):
     test_name: str
-    collection_date: Annotated[date, AfterValidator(check_date)]
-    lab_name: Optional[str] = None
     value: float
     unit: Optional[str] = None
     lower_bound: Optional[float] = None
     upper_bound: Optional[float] = None
+    
+class StandaloneEntryRequest(BaseModel):
+    file_name: str
+    collection_date: Annotated[date, AfterValidator(check_date)]
+    lab_name: Optional[str] = None
+    biomarkers: List[StandaloneBiomarker]
     
     
     
