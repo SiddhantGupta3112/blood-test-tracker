@@ -1,81 +1,154 @@
-# Blood Test Tracker
+# blood-test-tracker
 
-A backend system for parsing blood test lab reports (PDF) into structured, time-series biomarker data. Upload a report, review and correct the extracted values, and track trends across multiple tests over time — including automatic flagging of out-of-range results.
+A full-stack application for uploading, parsing, and tracking blood test results over time, with biomarker trend visualization and automatic abnormal-value flagging against lab reference ranges.
+
+**Status: feature-complete and working end-to-end locally. Deployment is the only remaining step.**
 
 ---
 
 ## What it does
 
-A user uploads a PDF lab report. The backend parses it with a regex-based extraction engine, returning the detected biomarkers for review. The user confirms or corrects this data before it's saved permanently — nothing is treated as ground truth until explicitly verified. Once verified, results can be queried as time series per biomarker, with abnormal values flagged automatically based on the reference ranges in the report.
-
-Manual entry is also supported for users without a PDF report — for example, a home glucometer reading.
+Register, log in, upload a blood test PDF and have it automatically parsed into structured biomarker data, review and confirm (or correct) what was extracted, log manual entries with one or many biomarkers at once (home blood pressure, glucose, anything without a lab PDF), browse how any biomarker has trended over time with abnormal values clearly flagged against reference ranges, export your full history as a CSV, and delete your account and every associated record permanently if you choose to.
 
 ---
 
-## Tech stack
+## Stack
 
-FastAPI, PostgreSQL, SQLAlchemy, Alembic, Redis, Docker and Docker Compose, JWT authentication (PyJWT, bcrypt), pdfplumber for PDF text extraction.
+**Backend:** FastAPI, PostgreSQL, SQLAlchemy + Alembic migrations, JWT auth (bcrypt password hashing), a custom Redis-backed sliding-window-log rate limiter (an extended, pluggable-key version of the standalone [redis-rate-limiter](https://github.com/SiddhantGupta3112/redis-rate-limiter) project), pdfplumber-based PDF parsing, Docker Compose.
 
----
-
-## Architecture decisions
-
-**Flush in CRUD, commit in service.** Every CRUD function uses `db.flush()` rather than `db.commit()` — the calling service or route owns the transaction boundary and commits once, after every step in a multi-part operation succeeds. This was not the original design: an early version had `create_report` commit immediately, which meant a parsing failure partway through `save_report` left an orphaned, empty report record in the database with no way to roll it back. Moving the commit to the outer service fixed this and made every multi-step write genuinely atomic.
-
-**Wipe-and-replace validation, not patch-in-place.** When a user submits corrected data, the backend deletes all existing `TestResult` rows for that report and inserts the submitted set fresh, rather than trying to match and update individual rows. This avoids a class of bugs around partial updates and stale rows, at the cost of being slightly more expensive — an acceptable trade for a report-sized dataset.
-
-**Every query is scoped to the requesting user.** Reports, results, and biomarker history are never fetched by ID alone — every query filters on `user_id` as well, preventing one user from accessing another user's data by guessing or incrementing an ID (an insecure direct object reference).
-
-**Three-state report lifecycle.** Reports move through `unverified -> pending -> verified`. A report is `unverified` immediately after parsing, `pending` once a user opens it for review, and `verified` once they confirm the final data. Only verified reports appear in trend and plot queries.
-
-**`is_abnormal` is computed and stored at write time, not derived on read.** Each result's abnormal flag is calculated once, when the data is saved, rather than recalculated every time it's queried. This keeps read queries cheap and keeps the abnormal-detection logic in one place, tested independently of the API layer.
-
-**N+1 query elimination.** The reports list endpoint originally queried the result count separately for every report in a loop. It now uses a single query with a join and `COUNT`, returning every report and its result count in one round trip regardless of how many reports exist.
-
-**Rate limiting differs by endpoint, deliberately.** Login is rate-limited by IP address, since there's no authenticated user yet at that point. Upload is rate-limited by user ID extracted from the JWT, since IP-based limiting is too coarse once a user is authenticated — multiple users behind the same network IP shouldn't share a limit.
+**Frontend:** React 19 + TypeScript + Vite, Tailwind CSS v4, React Router, Recharts for biomarker trend charts, lucide-react for icons. Built and iterated with Google AI Studio; every API integration verified by hand against the real backend rather than assumed correct.
 
 ---
 
-## Running it
+## Repository structure
 
-```bash
-git clone <repo-url>
-cd blood-test-tracker/backend
-cp .env.example .env
-docker compose up --build
+```
+blood-test-tracker/
+├── backend/
+│   ├── app/
+│   │   ├── api/          # route handlers (auth, pdf, plots)
+│   │   ├── core/          # config, security (JWT, bcrypt)
+│   │   ├── crud/          # database read/write functions
+│   │   ├── limiter/       # rate limiter (dependency + Redis client)
+│   │   ├── models/        # SQLAlchemy models
+│   │   ├── schemas/       # Pydantic request/response schemas
+│   │   ├── services/      # PDF parsing, metadata extraction
+│   │   └── main.py
+│   ├── alembic/            # migrations
+│   ├── docker-compose.yml
+│   └── requirements.txt
+└── frontend/
+    ├── src/
+    │   ├── components/     # Layout, BiomarkerChart, ConfirmationModal, ComingSoonModal
+    │   ├── pages/            # Login, Register, Reports, ReportDetail, Biomarkers, AddManualEntry, UploadPDF, Profile
+    │   ├── api.ts             # all backend API calls
+    │   ├── types.ts           # TypeScript types mirroring the backend's Pydantic schemas
+    │   └── utils.ts
+    └── package.json
 ```
 
-That's the entire setup. The app container runs an entrypoint script that applies all Alembic migrations before starting the server, so a completely fresh database is brought up to the latest schema automatically — no manual migration step required, whether running locally for the first time or deploying fresh.
+---
 
-The API is available at `http://localhost:8000`, with interactive docs at `http://localhost:8000/docs`.
+## Architecture
+
+```
+React (Vite)                     FastAPI                              PostgreSQL
+  |                                 |                                      |
+  |-- POST /auth/register --------->|-- create_new_user ------------------>|
+  |-- POST /auth/login ------------>|-- verify + issue JWT ----------------|
+  |-- DELETE /auth/me ------------->|-- delete user, CASCADE deletes ----->|
+  |                                 |   every report + result              |
+  |-- POST /pdf/upload ------------>|-- parse PDF, save file ------------->|
+  |-- POST /pdf/validate/{id} ----->|-- confirm parsed data, verify ------>|
+  |-- PATCH /reports/{id}/edit ---->|-- persist an edit to a report ------>|
+  |-- POST /pdf/standalone -------->|-- manual entry, 1+ biomarkers ------>|
+  |-- GET /pdf/reports ------------>|-- list summaries -------------------->|
+  |-- GET /plots/history/{test} --->|-- one biomarker's time series ------->|
+  |-- GET /plots/report/{id} ------>|-- full report detail ---------------->|
+```
+
+JWT auth (`Authorization: Bearer <token>`), token persisted in `localStorage`. A separate `/auth/swagger-login` endpoint exists purely so FastAPI's auto-generated Swagger UI has a working "Authorize" button (it requires `OAuth2PasswordRequestForm`, a different shape than the JSON-body `/auth/login` the real frontend uses) — both routes share one `_authenticate_user` helper so their logic can't drift apart.
 
 ---
 
-## API overview
+## The report verification lifecycle
 
-| Endpoint | Method | Description |
-|---|---|---|
-| `/auth/register` | POST | Create a new account |
-| `/auth/login` | POST | Authenticate, returns a JWT |
-| `/auth/me` | GET | Current user's profile |
-| `/pdf/upload` | POST | Upload a PDF report for parsing |
-| `/pdf/validate/{report_id}` | POST | Submit corrected data, mark report verified |
-| `/pdf/standalone` | POST | Manually log a single test result |
-| `/pdf/reports` | GET | List all reports for the current user |
-| `/pdf/reports/{report_id}` | PATCH | Update report status (unverified to pending) |
-| `/pdf/reports/{report_id}` | DELETE | Delete a report and its results |
-| `/plots/tests` | GET | List distinct biomarker names with verified data |
-| `/plots/history/{test_name}` | GET | Time series of one biomarker across all reports |
-| `/plots/report/{report_id}` | GET | All results for a single report |
+Every report has a `status`: `unverified` → `pending` → `verified`.
+
+- **`unverified`** — a freshly parsed PDF. Regex-based extraction from unstructured text is inherently imperfect, so nothing is trusted until a human confirms it.
+- **`pending`** — a report explicitly flagged for later review (one-directional: only `unverified → pending`).
+- **`verified`** — either a human confirmed a parsed report via `POST /pdf/validate/{id}`, or the entry was created as a standalone manual entry, which skips the review workflow entirely since there was never an unreliable extraction step to distrust in the first place.
+
+**Unverified data is excluded from biomarker trend history and the test-name list at the query level**, not just visually flagged — an unconfirmed, possibly-misread number should never silently appear on a health trend chart.
+
+---
+
+## Design decisions worth knowing
+
+**Manual entries reuse the exact same `Report` → `TestResult` structure as PDF uploads.** No new tables were needed to support multi-biomarker manual entries (e.g. logging a home blood pressure reading as two related values, systolic and diastolic, under one entry with one shared date) — a `Report` having many `TestResult` rows is exactly how parsed PDF uploads already worked. The only change needed was the *request schema*, from a single flat biomarker to a list:
+```json
+{
+  "file_name": "Home Blood Pressure",
+  "collection_date": "2026-07-08",
+  "lab_name": "Home Device",
+  "biomarkers": [
+    { "test_name": "Systolic", "value": 120, "unit": "mmHg", "lower_bound": 90, "upper_bound": 130 },
+    { "test_name": "Diastolic", "value": 80, "unit": "mmHg", "lower_bound": 60, "upper_bound": 85 }
+  ]
+}
+```
+
+**Account deletion needed almost no application logic.** `DELETE /auth/me` deletes the authenticated user's row; every `Report` and, transitively, every `TestResult` belonging to them is removed automatically via `ON DELETE CASCADE`, configured once at the database level. The route itself is a single `db.delete(user)` call. The frontend requires typing the account's own email into a confirmation modal (`ConfirmationModal.tsx`) before the delete button is even enabled, given how irreversible this action is.
+
+**Two-factor authentication is presented honestly as unavailable, not as a broken control.** There is no backend support for 2FA. Rather than a toggle that silently does nothing, the frontend uses a dedicated `ComingSoonModal.tsx` so the UI never implies a feature works when it doesn't.
+
+**`get_current_user` re-checks the database on every request, not just the JWT signature.** A cryptographically valid, unexpired token only proves it was issued by this server — it says nothing about whether that user still exists. Since account deletion is now a real feature, this matters concretely: a deleted account's still-valid old token is correctly rejected because the second lookup finds no matching row.
+
+**N+1 queries are avoided in the reports list** via a single query using an outer join plus `GROUP BY`/`COUNT`, computing every report's test count in the same round-trip that fetches the reports themselves, rather than one extra query per report.
 
 ---
 
 ## Known limitations
 
-**Lab name extraction is best-effort.** The parser checks the first line of a report's first page for known lab-related keywords. Reports where the lab name is embedded in a background image or watermark rather than extractable text will not be detected, and the field is left for the user to fill in manually during review.
+- **The rate limiter's two documented algorithmic gaps apply here too** (non-atomic operation sequence across its four Redis calls; a rare same-millisecond counting edge case) — both are explained in full in the standalone [redis-rate-limiter](https://github.com/SiddhantGupta3112/redis-rate-limiter) project. Accepted as-is at this project's scale (protecting login/upload endpoints from abuse), not fixed in either project.
+- **CSV export is assembled client-side** from data already fetched via existing endpoints, not served by a dedicated export endpoint — a deliberate, reasonable choice rather than a shortcut awaiting a fix.
+- **PDF parsing is regex-based and inherently heuristic** — different labs format reports differently, and no fixed pattern can perfectly parse every layout. This is precisely why the review/verification workflow exists as a first-class part of the design rather than an afterthought.
+- **CORS origins were configured only once the frontend had a real deployed URL** — see Deployment below.
+- The frontend's `package.json` carries a few unused dependencies (`@google/genai`, `express`, `dotenv`, `tsx`) left over from Google AI Studio's default project scaffold — none are imported or used anywhere in `src/`, and `GEMINI_API_KEY` in `.env.example` is likewise unused; this app makes no calls to Gemini or any LLM. Safe to remove in a future cleanup pass, not required for correctness.
 
-**The regex-based parser can produce false positives.** Table header or legend rows that happen to match the value-extraction pattern can occasionally be parsed as if they were a real result — for example, a reference-range legend line like `"HbA1c in % | 4.0-5.6 | 5.7-6.4 | >="` has been observed coming through as a spurious row. This is exactly why the review-and-correct step exists before any data is saved permanently — the user is expected to discard rows like this during validation.
+---
 
-**The Redis rate limiter is not atomic under high concurrency.** The sliding window check executes as four sequential Redis commands rather than a single atomic Lua script. Two simultaneous requests for the same key can theoretically both be counted as under the limit when together they exceed it. Acceptable for the traffic this application expects; would need to be addressed before use at meaningful scale.
+## Planned features (not yet built)
 
-**Test coverage is partial, not exhaustive.** The automated suite covers authentication flows, upload validation (auth enforcement, content-type rejection, successful parsing), and the abnormal-value detection logic across ten boundary cases. Full end-to-end coverage of the validate -> plot -> delete sequence, and negative-path tests on the validation endpoint (cross-user access attempts, malformed payloads), are a known gap rather than an oversight.
+1. Custom reference ranges — override default lab bounds per user or per test.
+2. Bulk upload — multiple PDFs in one action.
+3. Re-upload / replace a report whose PDF was parsed poorly, without a full delete-and-reupload.
+4. Email alerts on a newly flagged abnormal result, and reminders for reports left unverified.
+5. Real two-factor authentication and password/email change endpoints.
+
+---
+
+## Running locally
+
+```bash
+git clone https://github.com/SiddhantGupta3112/blood-test-tracker.git
+
+cd blood-test-tracker/backend
+cp .env.example .env
+docker compose up
+
+# in a second terminal
+cd ../frontend
+cp .env.example .env   # set VITE_API_BASE_URL to the backend's URL, e.g. http://localhost:8000
+npm install
+npm run dev
+```
+
+---
+
+## Security notes
+
+- Passwords hashed with bcrypt; JWTs signed with HS256 using standard registered claims (`iss`, `sub`, `exp`, `iat`).
+- Login and upload endpoints are rate-limited (5 login attempts / 60s per IP, 10 uploads / 60s per authenticated user).
+- Every report/result lookup is scoped to the requesting user's `user_id`, preventing cross-account access via ID guessing.
+- Destructive actions (account deletion) require typed confirmation in the UI in addition to backend auth, not relied on as the only safeguard.
