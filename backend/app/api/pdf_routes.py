@@ -12,7 +12,7 @@ from app.services.database_service import save_report
 from app.services.parse_pdf import get_report_data
 from app.services.get_metadata import get_metadata
 from app.crud.report import fetch_report, fetch_all_reports, delete_report, create_standalone_test
-from app.crud.test_results import add_test_data, delete_results_for_report, get_test_metadata, get_test_names
+from app.crud.test_results import add_test_data, delete_results_for_report, get_test_metadata
 from pathlib import Path
 from app.limiter.dependency import get_user_key, RateLimiter
 
